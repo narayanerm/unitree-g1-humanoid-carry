@@ -40,8 +40,11 @@ from mjlab.sensor import (
     TerrainHeightSensorCfg,
 )
 from mjlab.sim import MujocoCfg, SimulationCfg
+from dataclasses import dataclass
+
 from mjlab.tasks.velocity import mdp as vel_mdp
 from mjlab.tasks.velocity.mdp import base_ang_vel, base_lin_vel, projected_gravity, UniformVelocityCommandCfg
+from mjlab.tasks.velocity.mdp import UniformVelocityCommand
 from mjlab.terrains import TerrainEntityCfg
 from mjlab.utils.noise import UniformNoiseCfg as Unoise
 from mjlab.viewer import ViewerConfig
@@ -49,6 +52,81 @@ from mjlab.rl import RslRlModelCfg, RslRlOnPolicyRunnerCfg, RslRlPpoAlgorithmCfg
 
 # Shared with walk: sign-consistency penalty for commanded yaw (kills startup rotation bias).
 from src.policy_walk import wz_sign_penalty
+
+
+class UniformVelocityWithRotateCommand(UniformVelocityCommand):
+    """Replaces mjlab's independent Bernoulli sampling with a 5-way categorical draw.
+    Modes and marginals: standing / rotate / forward / heading / free. Each env sees exactly one.
+    """
+
+    cfg: "UniformVelocityWithRotateCommandCfg"
+
+    def __init__(self, cfg, env):
+        super().__init__(cfg, env)
+        self.is_rotate_env = torch.zeros_like(self.is_heading_env)
+        total = (cfg.rel_standing_envs + cfg.rel_rotate_envs
+                 + cfg.rel_forward_envs + cfg.rel_heading_envs)
+        assert total <= 1.0 + 1e-6, (
+            f"Categorical mode fractions sum to {total} > 1.0. Free-mode fraction would be negative."
+        )
+
+    def _resample_command(self, env_ids):
+        n = len(env_ids)
+        r = torch.empty(n, device=self.device)
+
+        # Baseline uniform sample used by free / heading / and as pre-clamp values for rotate/forward.
+        self.vel_command_b[env_ids, 0] = r.uniform_(*self.cfg.ranges.lin_vel_x)
+        self.vel_command_b[env_ids, 1] = r.uniform_(*self.cfg.ranges.lin_vel_y)
+        self.vel_command_b[env_ids, 2] = r.uniform_(*self.cfg.ranges.ang_vel_z)
+        if self.cfg.heading_command:
+            assert self.cfg.ranges.heading is not None
+            self.heading_target[env_ids] = r.uniform_(*self.cfg.ranges.heading)
+        self.vel_command_w[env_ids] = self.vel_command_b[env_ids]
+
+        # World-frame flag stays independent (it's a frame modifier, not a mode).
+        self.is_world_env[env_ids] = r.uniform_(0.0, 1.0) <= self.cfg.rel_world_envs
+
+        # Single categorical draw picks one of the five modes per env.
+        u = torch.empty(n, device=self.device).uniform_(0.0, 1.0)
+        t_stand = self.cfg.rel_standing_envs
+        t_rotate = t_stand + self.cfg.rel_rotate_envs
+        t_fwd = t_rotate + self.cfg.rel_forward_envs
+        t_head = t_fwd + self.cfg.rel_heading_envs
+
+        is_stand = u < t_stand
+        is_rotate = (u >= t_stand) & (u < t_rotate)
+        is_fwd = (u >= t_rotate) & (u < t_fwd)
+        is_head = (u >= t_fwd) & (u < t_head)
+
+        self.is_standing_env[env_ids] = is_stand
+        self.is_rotate_env[env_ids] = is_rotate
+        self.is_forward_env[env_ids] = is_fwd
+        self.is_heading_env[env_ids] = is_head
+
+        if is_rotate.any():
+            rot_ids = env_ids[is_rotate]
+            wz = self.vel_command_b[rot_ids, 2]
+            sign = torch.where(wz >= 0, torch.ones_like(wz), -torch.ones_like(wz))
+            self.vel_command_b[rot_ids, 2] = sign * wz.abs().clamp(min=self.cfg.min_abs_ang_vel_z)
+            self.vel_command_b[rot_ids, 0] = 0.0
+            self.vel_command_b[rot_ids, 1] = 0.0
+            self.vel_command_w[rot_ids, 0] = 0.0
+            self.vel_command_w[rot_ids, 1] = 0.0
+
+        if is_fwd.any():
+            fwd_ids = env_ids[is_fwd]
+            self.vel_command_b[fwd_ids, 0] = self.vel_command_b[fwd_ids, 0].abs().clamp(min=0.3)
+            self.vel_command_b[fwd_ids, 1] = 0.0
+            self.vel_command_b[fwd_ids, 2] = 0.0
+
+
+@dataclass(kw_only=True)
+class UniformVelocityWithRotateCommandCfg(UniformVelocityCommandCfg):
+    rel_rotate_envs: float = 0.0
+    min_abs_ang_vel_z: float = 0.2
+
+    def build(self, env):
+        return UniformVelocityWithRotateCommand(self, env)
 
 
 # Local helpers duplicated from policy_pick to keep carry independent; mirror changes in policy_pick.py.
@@ -495,6 +573,25 @@ def single_stance_reward(env, sensor_name: str, command_name: str | None = None,
     return reward
 
 
+def double_stance_reward(env, sensor_name: str, command_name: str | None = None,
+                         command_threshold: float = 0.05) -> torch.Tensor:
+    """Reward both feet in ground contact, gated to activate only during standing commands.
+    Args: env — RL env; sensor_name — contact-sensor name; command_name — twist command key (None keeps the reward always active); command_threshold — maximum |v_xy| + |wz| for the standing gate.
+    Returns: (num_envs,) 0/1 reward active when the command is near zero, mirror of single_stance.
+    """
+    sensor = env.scene[sensor_name]
+    in_contact = (sensor.data.found > 0).float()
+    reward = (in_contact.sum(dim=1) == 2).float()
+    if command_name is not None:
+        command = env.command_manager.get_command(command_name)
+        if command is not None:
+            linear_norm = torch.norm(command[:, :2], dim=1)
+            angular_norm = torch.abs(command[:, 2])
+            active = ((linear_norm + angular_norm) <= command_threshold).float()
+            reward = reward * active
+    return reward
+
+
 def action_rate_l2(env) -> torch.Tensor:
     """Sum of squared action deltas between consecutive steps.
     Args: env — RL env.
@@ -626,14 +723,16 @@ def build_g1_carry_mdp():
         )
     }
 
-    # Twist command: matches policy_walk.py so warm-start transfers 1:1 and no distribution shift on velocity.
+    # Twist command: matches policy_walk.py plus a rotate-in-place mode absent from mjlab.
     commands: dict[str, CommandTermCfg] = {
-        "twist": UniformVelocityCommandCfg(
+        "twist": UniformVelocityWithRotateCommandCfg(
             entity_name="robot",
             resampling_time_range=(3.0, 8.0),
-            rel_standing_envs=0.02,
-            rel_heading_envs=0.15,
-            rel_forward_envs=0.05,
+            rel_standing_envs=0.20,
+            rel_rotate_envs=0.15,
+            rel_forward_envs=0.15,
+            rel_heading_envs=0.10,
+            min_abs_ang_vel_z=0.2,
             heading_command=True,
             heading_control_stiffness=0.5,
             debug_vis=True,
@@ -666,6 +765,20 @@ def build_g1_carry_mdp():
         "single_stance":  RewardTermCfg(func=single_stance_reward,  weight=0.8,
                                         params={"sensor_name": "feet_ground_contact",
                                                 "command_name": "twist", "command_threshold": 0.05}),
+        "double_stance":  RewardTermCfg(func=double_stance_reward,  weight=0.5,
+                                        params={"sensor_name": "feet_ground_contact",
+                                                "command_name": "twist", "command_threshold": 0.05}),
+        "feet_slip": RewardTermCfg(
+            func=vel_mdp.feet_slip,
+            weight=-0.1,
+            params={
+                "sensor_name": "feet_ground_contact",
+                "command_name": "twist",
+                # Negative threshold keeps the penalty active in standing/rotate so feet don't drag.
+                "command_threshold": -1.0,
+                "asset_cfg": feet_sites,
+            },
+        ),
         "action_rate_l2": RewardTermCfg(func=action_rate_l2,        weight=-0.05),
         "dof_pos_limits": RewardTermCfg(func=vel_mdp.joint_pos_limits, weight=-1.0, params={"asset_cfg": g1_asset}),
         "body_ang_vel": RewardTermCfg(

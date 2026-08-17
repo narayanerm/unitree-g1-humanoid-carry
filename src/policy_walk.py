@@ -92,6 +92,25 @@ def single_stance_reward(env, sensor_name, command_name=None, command_threshold=
     return reward
 
 
+def double_stance_reward(env, sensor_name, command_name=None, command_threshold=0.05):
+    """Reward +1 when both feet contact ground, gated to activate only during standing commands.
+    Args: env — RL env; sensor_name — foot contact sensor; command_name — twist command key; command_threshold — standing ceiling.
+    Returns: per-env reward tensor.
+    """
+    sensor = env.scene[sensor_name]
+    in_contact = (sensor.data.found > 0).float()
+    num_contact = in_contact.sum(dim=1)
+    reward = (num_contact == 2).float()
+    if command_name is not None:
+        command = env.command_manager.get_command(command_name)
+        if command is not None:
+            linear_norm = torch.norm(command[:, :2], dim=1)
+            angular_norm = torch.abs(command[:, 2])
+            active = ((linear_norm + angular_norm) <= command_threshold).float()
+            reward = reward * active
+    return reward
+
+
 def swing_height_error(env, sensor_name, height_sensor_name, target_height, sigma,
                        command_name="twist", command_threshold=0.05):
     """Quadratic penalty on foot height error while in swing (fuses foot_clearance + foot_swing_height).
@@ -197,7 +216,7 @@ def build_g1_mdp():
         "twist": UniformVelocityCommandCfg(
             entity_name="robot",
             resampling_time_range=(3.0, 8.0),
-            rel_standing_envs=0.02,
+            rel_standing_envs=0.20,
             rel_heading_envs=0.15,
             rel_forward_envs=0.05,
             heading_command=True,
@@ -358,8 +377,18 @@ def build_g1_mdp():
             params={
                 "sensor_name": "feet_ground_contact",
                 "command_name": "twist",
-                "command_threshold": 0.05,
+                # Negative threshold keeps the penalty active in standing so feet don't drag at v=0.
+                "command_threshold": -1.0,
                 "asset_cfg": feet_sites,
+            },
+        ),
+        "double_stance": RewardTermCfg(
+            func=double_stance_reward,
+            weight=1.0,
+            params={
+                "sensor_name": "feet_ground_contact",
+                "command_name": "twist",
+                "command_threshold": 0.05,
             },
         ),
         "self_collisions": RewardTermCfg(
