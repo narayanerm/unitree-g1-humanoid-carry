@@ -462,18 +462,24 @@ def reset_arms_to_holding(
     asset.write_joint_state_to_sim(pose, vel, joint_ids=joint_ids_t, env_ids=env_ids)
 
 
-# Mirrored joint pairs (left, right, sign): +1 = same sign in symmetric pose, -1 = opposite (roll axes).
+# Mirrored joint pairs (left, right, sign): sign is +1 when the symmetric pose
+# has L=R and -1 when L=-R, per the joint axis under sagittal (world-y) mirror.
+# Roll (axis x) and yaw (axis z) both flip because both axes lie in the mirror
+# plane so the rotation sense reverses. Only pitch (axis y) preserves sign.
+# Previously the yaw entries were +1, which made symmetric_pose_penalty reward
+# L_yaw=R_yaw (physically asymmetric: both wrists/hips turned to the same side)
+# and penalise L_yaw=-R_yaw (the true mirror-symmetric pose).
 _SYMMETRIC_PAIRS = (
     ("left_shoulder_pitch_joint", "right_shoulder_pitch_joint", +1),
     ("left_shoulder_roll_joint",  "right_shoulder_roll_joint",  -1),
-    ("left_shoulder_yaw_joint",   "right_shoulder_yaw_joint",   +1),
+    ("left_shoulder_yaw_joint",   "right_shoulder_yaw_joint",   -1),
     ("left_elbow_joint",          "right_elbow_joint",          +1),
     ("left_wrist_roll_joint",     "right_wrist_roll_joint",     -1),
     ("left_wrist_pitch_joint",    "right_wrist_pitch_joint",    +1),
-    ("left_wrist_yaw_joint",      "right_wrist_yaw_joint",      +1),
+    ("left_wrist_yaw_joint",      "right_wrist_yaw_joint",      -1),
     ("left_hip_pitch_joint",      "right_hip_pitch_joint",      +1),
     ("left_hip_roll_joint",       "right_hip_roll_joint",       -1),
-    ("left_hip_yaw_joint",        "right_hip_yaw_joint",        +1),
+    ("left_hip_yaw_joint",        "right_hip_yaw_joint",        -1),
     ("left_knee_joint",           "right_knee_joint",           +1),
     ("left_ankle_pitch_joint",    "right_ankle_pitch_joint",    +1),
     ("left_ankle_roll_joint",     "right_ankle_roll_joint",     -1),
