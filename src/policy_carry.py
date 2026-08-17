@@ -746,7 +746,7 @@ def build_g1_carry_mdp():
     }
 
     rewards = {
-        "track_linear_velocity":  RewardTermCfg(func=vel_mdp.track_linear_velocity,  weight=2.5,
+        "track_linear_velocity":  RewardTermCfg(func=vel_mdp.track_linear_velocity,  weight=6.0,
                                                 params={"command_name": "twist", "std": math.sqrt(0.25)}),
         "track_angular_velocity": RewardTermCfg(func=vel_mdp.track_angular_velocity, weight=10.0,
                                                 params={"command_name": "twist", "std": math.sqrt(0.10)}),
