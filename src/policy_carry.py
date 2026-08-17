@@ -968,8 +968,8 @@ def g1_carry_ppo_runner_cfg():
             gamma=0.99, lam=0.95, desired_kl=0.01, max_grad_norm=1.0,
             symmetry_cfg={
                 "use_data_augmentation": True,
-                "use_mirror_loss": True,
-                "mirror_loss_coeff": 1.0,
+                "use_mirror_loss": False,
+                "mirror_loss_coeff": 0.0,
                 "data_augmentation_func": "src.symmetry:mirror_g1_carry",
             },
         ),
