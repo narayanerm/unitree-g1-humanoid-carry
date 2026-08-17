@@ -174,6 +174,78 @@ def mirror_carry_actions(actions: torch.Tensor) -> torch.Tensor:
     return _switch_g1_joints_left_right(actions)
 
 
+# ==================== snapshot buffer mirror (numpy) ====================
+# Used by src.collect_buffer to double a terminal-state buffer by appending the
+# sagittal mirror of every sample. Operates on the yaw-aligned schema dumped by
+# collect_buffer._snapshot: root_z, quat_zy, lin_vel_by, ang_vel_by, joint_pos,
+# joint_vel (+ optionally box_pos_by, box_quat_by, box_lin_vel_by, box_ang_vel_by).
+# All vector/quat fields live in the body-yaw-aligned frame, so mirror is direct.
+
+import numpy as np
+
+
+def _np_switch_joints(x: "np.ndarray") -> "np.ndarray":
+    """Numpy version of _switch_g1_joints_left_right for (..., 29) arrays."""
+    out = x[..., list(G1_MIRROR_PERM)].copy()
+    for i in G1_MIRROR_SIGN_FLIP_IDX:
+        out[..., i] *= -1.0
+    return out
+
+
+def _np_mirror_body_quat(q: "np.ndarray") -> "np.ndarray":
+    """Sagittal mirror of a body-frame quaternion (w, x, y, z) -> (w, -x, y, -z)."""
+    m = q.copy()
+    m[..., 1] *= -1.0
+    m[..., 3] *= -1.0
+    return m
+
+
+def _np_mirror_vec(v: "np.ndarray") -> "np.ndarray":
+    """Regular 3-vector sagittal mirror (x, y, z) -> (x, -y, z)."""
+    m = v.copy()
+    m[..., 1] *= -1.0
+    return m
+
+
+def _np_mirror_pseudovec(w: "np.ndarray") -> "np.ndarray":
+    """Pseudo-vector sagittal mirror (wx, wy, wz) -> (-wx, wy, -wz)."""
+    m = w.copy()
+    m[..., 0] *= -1.0
+    m[..., 2] *= -1.0
+    return m
+
+
+# Per-field mirror op for the collect_buffer schema. Unknown keys pass through.
+_SNAPSHOT_MIRROR_OPS = {
+    "root_z":         lambda a: a.copy(),
+    "quat_zy":        _np_mirror_body_quat,
+    "lin_vel_by":     _np_mirror_vec,
+    "ang_vel_by":     _np_mirror_pseudovec,
+    "joint_pos":      _np_switch_joints,
+    "joint_vel":      _np_switch_joints,
+    "box_pos_by":     _np_mirror_vec,
+    "box_quat_by":    _np_mirror_body_quat,
+    "box_lin_vel_by": _np_mirror_vec,
+    "box_ang_vel_by": _np_mirror_pseudovec,
+}
+
+
+def mirror_snapshot_buffer(buf: dict) -> dict:
+    """Return a dict with the same keys where each array is doubled: [original; mirror].
+    Args: buf — dict from a collect_buffer .npz.
+    Returns: same keys, arrays of shape (2*N, ...).
+    """
+    out = {}
+    for k, v in buf.items():
+        op = _SNAPSHOT_MIRROR_OPS.get(k)
+        if op is None:
+            # Unknown field: keep original doubled (no physical mirror defined).
+            out[k] = np.concatenate([v, v], axis=0)
+        else:
+            out[k] = np.concatenate([v, op(v)], axis=0)
+    return out
+
+
 # ==================== rsl_rl entrypoint ====================
 
 @torch.no_grad()
