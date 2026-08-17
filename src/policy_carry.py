@@ -434,12 +434,76 @@ HOLDING_ARM_POSE = {
 HOLDING_ARM_JOINTS = tuple(HOLDING_ARM_POSE.keys())
 
 
+def reset_robot_and_box_held(
+    env: ManagerBasedRlEnv,
+    env_ids: torch.Tensor | None,
+    box_cfg: SceneEntityCfg,
+    xy_jitter_robot: float = 0.05,
+    yaw_range: tuple[float, float] = (-math.pi, math.pi),
+    box_x_offset: float = BOX_HOLD_X_OFFSET,
+    box_z_above_root: float = BOX_HOLD_Z_ABOVE_ROOT,
+    box_xy_jitter: float = 0.02,
+) -> None:
+    """Procedural reset: robot at default pose with xy+yaw jitter, box teleported into the hugging offset.
+    Args: env — RL env; env_ids — envs to reset (None = all); box_cfg — box entity; xy_jitter_robot — root xy noise; yaw_range — base yaw range; box_x_offset — forward hand spacing in body frame; box_z_above_root — box height above root; box_xy_jitter — box lateral noise.
+    Returns: none.
+
+    Mirror of reset_robot_and_soft_box for the rigid-box variant. Reinstates the
+    pre-pick-buffer warm-start: robot spawns in the walk-home posture and the box
+    materialises glued to the chest, so training does not have to solve the pick
+    handoff distribution issues that come with reset_from_pick_buffer.
+    """
+    if env_ids is None:
+        env_ids = torch.arange(env.num_envs, device=env.device, dtype=torch.int)
+    n = len(env_ids)
+    if n == 0:
+        return
+
+    yaw = torch.empty(n, device=env.device).uniform_(*yaw_range)
+    x_jit = torch.empty(n, device=env.device).uniform_(-xy_jitter_robot, xy_jitter_robot)
+    y_jit = torch.empty(n, device=env.device).uniform_(-xy_jitter_robot, xy_jitter_robot)
+    origins = env.scene.env_origins[env_ids]
+    robot_x = origins[:, 0] + x_jit
+    robot_y = origins[:, 1] + y_jit
+    robot_z = torch.full((n,), float(G1_HOME_ROOT_POS[2]), device=env.device)
+
+    half = yaw * 0.5
+    robot_quat = torch.stack(
+        [torch.cos(half), torch.zeros_like(yaw), torch.zeros_like(yaw), torch.sin(half)], dim=-1
+    )
+    robot_pos = torch.stack([robot_x, robot_y, robot_z], dim=-1)
+    robot: Entity = env.scene["robot"]
+    robot.write_root_link_pose_to_sim(
+        torch.cat([robot_pos, robot_quat], dim=-1), env_ids=env_ids,
+    )
+    robot.write_root_link_velocity_to_sim(
+        torch.zeros(n, 6, device=env.device), env_ids=env_ids,
+    )
+
+    cx = torch.cos(yaw); sy = torch.sin(yaw)
+    box_jx = torch.empty(n, device=env.device).uniform_(-box_xy_jitter, box_xy_jitter)
+    box_jy = torch.empty(n, device=env.device).uniform_(-box_xy_jitter, box_xy_jitter)
+    box_x = robot_x + box_x_offset * cx + box_jx
+    box_y = robot_y + box_x_offset * sy + box_jy
+    box_z = robot_z + box_z_above_root
+
+    identity_quat = torch.zeros(n, 4, device=env.device); identity_quat[:, 0] = 1.0
+    box_pos = torch.stack([box_x, box_y, box_z], dim=-1)
+    box_entity: Entity = env.scene[box_cfg.name]
+    box_entity.write_root_link_pose_to_sim(
+        torch.cat([box_pos, identity_quat], dim=-1), env_ids=env_ids,
+    )
+    box_entity.write_root_link_velocity_to_sim(
+        torch.zeros(n, 6, device=env.device), env_ids=env_ids,
+    )
+
+
 def reset_arms_to_holding(
     env: ManagerBasedRlEnv,
     env_ids: torch.Tensor | None,
     asset_cfg: SceneEntityCfg,
 ) -> None:
-    """Snap the 14 arm joints to HOLDING_ARM_POSE (legacy — used only by policy_carry_soft).
+    """Snap the 14 arm joints to HOLDING_ARM_POSE (used by the procedural reset chain in policy_carry and policy_carry_soft).
     Args: env — RL env; env_ids — envs to reset (None = all); asset_cfg — robot entity selecting the 14 arm joints.
     Returns: none.
     """
@@ -658,6 +722,7 @@ def build_g1_carry_mdp():
     )
 
     g1_asset      = SceneEntityCfg("robot", joint_names=G1_JOINTS, preserve_order=True)
+    holding_arms  = SceneEntityCfg("robot", joint_names=HOLDING_ARM_JOINTS, preserve_order=True)
     left_sym      = SceneEntityCfg("robot", joint_names=_LEFT_SYM_JOINTS,  preserve_order=True)
     right_sym     = SceneEntityCfg("robot", joint_names=_RIGHT_SYM_JOINTS, preserve_order=True)
     wrist_acts    = SceneEntityCfg("robot", actuator_names=(r".*wrist.*",), preserve_order=True)
@@ -818,16 +883,20 @@ def build_g1_carry_mdp():
             mode="reset",
             params={},
         ),
-        "reset_from_pick_buffer": EventTermCfg(
-            func=reset_from_pick_buffer,
+        "reset_robot_and_box_held": EventTermCfg(
+            func=reset_robot_and_box_held,
             mode="reset",
             params={
-                "buffer_path": PICK_BUFFER_PATH,
-                "xy_range":  (-0.05, 0.05),
+                "box_cfg": box,
+                "xy_jitter_robot": 0.05,
                 "yaw_range": (-math.pi, math.pi),
-                "asset_cfg": g1_asset,
-                "box_cfg":   box,
+                "box_x_offset": BOX_HOLD_X_OFFSET,
+                "box_z_above_root": BOX_HOLD_Z_ABOVE_ROOT,
+                "box_xy_jitter": 0.02,
             },
+        ),
+        "reset_arms_holding": EventTermCfg(
+            func=reset_arms_to_holding, mode="reset", params={"asset_cfg": holding_arms},
         ),
         "push_robot": EventTermCfg(
             func=vel_mdp.push_by_setting_velocity,
