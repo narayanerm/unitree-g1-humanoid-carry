@@ -46,6 +46,7 @@ from mjlab.tasks.velocity import mdp as vel_mdp
 from mjlab.tasks.velocity.mdp import base_ang_vel, base_lin_vel, projected_gravity, UniformVelocityCommandCfg
 from mjlab.tasks.velocity.mdp import UniformVelocityCommand
 from mjlab.terrains import TerrainEntityCfg
+from mjlab.utils.lab_api.math import quat_apply_inverse, quat_conjugate, quat_mul, yaw_quat
 from mjlab.utils.noise import UniformNoiseCfg as Unoise
 from mjlab.viewer import ViewerConfig
 from mjlab.rl import RslRlModelCfg, RslRlOnPolicyRunnerCfg, RslRlPpoAlgorithmCfg
@@ -184,22 +185,31 @@ def _entity_pos(env: ManagerBasedRlEnv, asset_cfg: SceneEntityCfg) -> torch.Tens
     return entity.data.root_link_pos_w
 
 
-def body_vector(env, source_cfg, target_cfg):
-    """Compute world-frame vector from source body to target body.
-    Args: env — RL env; source_cfg — origin entity; target_cfg — destination entity.
-    Returns: (num_envs, 3) world-frame delta tensor.
+def _base_yaw_quat_w(env) -> torch.Tensor:
+    """Robot base orientation projected onto the yaw axis, as (num_envs, 4) wxyz quat.
+    Why: box-related obs are rotated by this quat's inverse so their y component
+    aligns with the robot's sagittal plane, which mirror_carry_obs assumes.
     """
-    return _entity_pos(env, target_cfg) - _entity_pos(env, source_cfg)
+    return yaw_quat(env.scene["robot"].data.root_link_quat_w)
+
+
+def body_vector(env, source_cfg, target_cfg):
+    """Vector from source body to target body expressed in the robot's body-yaw frame.
+    Args: env — RL env; source_cfg — origin entity; target_cfg — destination entity.
+    Returns: (num_envs, 3) delta tensor in body-yaw frame (y=0 is the sagittal plane).
+    """
+    rel_w = _entity_pos(env, target_cfg) - _entity_pos(env, source_cfg)
+    return quat_apply_inverse(_base_yaw_quat_w(env), rel_w)
 
 
 def box_position_obs(env, box_cfg):
-    """Robot-to-box position clipped to a safe observation range.
+    """Robot-to-box position in body-yaw frame, clipped to a safe observation range.
     Args: env — RL env; box_cfg — box scene entity.
     Returns: (num_envs, 3) tensor clamped to [-3, 3].
     """
     box_pos = env.scene[box_cfg.name].data.root_link_pos_w
     robot_pos = env.scene["robot"].data.root_link_pos_w
-    rel = box_pos - robot_pos
+    rel = quat_apply_inverse(_base_yaw_quat_w(env), box_pos - robot_pos)
     return torch.nan_to_num(rel, nan=0.0, posinf=0.0, neginf=0.0).clamp(-3.0, 3.0)
 
 
@@ -222,12 +232,13 @@ def box_ang_vel_obs(env, box_cfg):
 
 
 def box_orientation_obs(env, box_cfg):
-    """Box world-frame quaternion clipped to unit range.
+    """Box orientation in the robot's body-yaw frame, clipped to unit range.
     Args: env — RL env; box_cfg — box scene entity.
     Returns: (num_envs, 4) wxyz quaternion tensor.
     """
-    q = env.scene[box_cfg.name].data.root_link_quat_w
-    return torch.nan_to_num(q, nan=0.0, posinf=0.0, neginf=0.0).clamp(-1.0, 1.0)
+    q_w = env.scene[box_cfg.name].data.root_link_quat_w
+    q_by = quat_mul(quat_conjugate(_base_yaw_quat_w(env)), q_w)
+    return torch.nan_to_num(q_by, nan=0.0, posinf=0.0, neginf=0.0).clamp(-1.0, 1.0)
 
 
 def box_size_obs(env):
