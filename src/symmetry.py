@@ -1,14 +1,14 @@
-###############################################################################
-# Project    : Humanoid Loco-Manipulation with the Unitree G1                 #
-# Developer  : Narayane Ribeiro Medeiros                                      #
-# Repository : https://github.com/narayanerm/Humanoid-Loco-Manipulation       #
-###############################################################################
+##########################################################################################
+# Project    : unitree-g1-humanoid-carry                                                 #
+# Developer  : Narayane Ribeiro Medeiros                                                 #
+# Repository : https://github.com/narayanerm/unitree-g1-humanoid-carry                   #
+##########################################################################################
 """Left-right symmetry (sagittal-plane mirror) for the G1 carry task.
 
 Extends the walk mirror with the box-carry observations: hand-to-box vectors,
 trunk-to-box vector, per-wrist actuator torques, box position, box orientation
 (quat), and box size. Under the sagittal mirror (y flips) with a uniform rigid
-box, the physics remains consistent — mirror image of a symmetric box is the
+box, the physics remains consistent: mirror image of a symmetric box is the
 same box.
 
 Numerical operations on the concatenated obs vector:
@@ -24,8 +24,7 @@ from __future__ import annotations
 
 import torch
 
-# ==================== joint mapping (mirrors walk's) ====================
-
+# Joint mapping (mirrors walk's).
 G1_29DOF_JOINT_ORDER = (
     "left_hip_pitch_joint",  "left_hip_roll_joint",  "left_hip_yaw_joint",
     "left_knee_joint",       "left_ankle_pitch_joint", "left_ankle_roll_joint",
@@ -64,7 +63,7 @@ _assert_joint_order()
 
 def _switch_g1_joints_left_right(x: torch.Tensor) -> torch.Tensor:
     """Permute L<->R on the last dim of a (..., 29) tensor and flip roll/yaw signs.
-    Args: x — tensor whose last dim is exactly 29 (joint_pos, joint_vel or actions).
+    Args: x: tensor whose last dim is exactly 29 (joint_pos, joint_vel or actions).
     Returns: mirrored tensor, same shape.
     """
     perm = torch.as_tensor(G1_MIRROR_PERM, device=x.device, dtype=torch.long)
@@ -74,32 +73,30 @@ def _switch_g1_joints_left_right(x: torch.Tensor) -> torch.Tensor:
     return out * signs
 
 
-# ==================== wrist_torque mirror (6-D) ====================
-# Actual entity order for actuator_names=(r".*wrist.*",) preserve_order=True is
-# [L_roll, R_roll, L_pitch, L_yaw, R_pitch, R_yaw] — not the "L then R" grouping
-# a naive reader might expect. Verified against ManagerBasedRlEnv.scene["robot"]
-# .actuator_names at 2026-08-17. Swap L<->R AND flip roll/yaw sign (torques
-# around x, z axes invert under sagittal mirror; pitch around y stays).
-# Mapping:
-#   new_L_roll  = -old_R_roll  → slot 0 <- slot 1, sign -1
-#   new_R_roll  = -old_L_roll  → slot 1 <- slot 0, sign -1
-#   new_L_pitch = +old_R_pitch → slot 2 <- slot 4, sign +1
-#   new_L_yaw   = -old_R_yaw   → slot 3 <- slot 5, sign -1
-#   new_R_pitch = +old_L_pitch → slot 4 <- slot 2, sign +1
-#   new_R_yaw   = -old_L_yaw   → slot 5 <- slot 3, sign -1
+# Wrist torque mirror (6-D). Actual entity order for actuator_names=(r".*wrist.*",)
+# preserve_order=True is [L_roll, R_roll, L_pitch, L_yaw, R_pitch, R_yaw], not the
+# "L then R" grouping a naive reader might expect. Verified against
+# ManagerBasedRlEnv.scene["robot"].actuator_names at 2026-08-17. Swap L<->R AND flip
+# roll/yaw sign (torques around x, z axes invert under sagittal mirror; pitch around
+# y stays). Mapping:
+#   new_L_roll  = -old_R_roll  slot 0 <- slot 1, sign -1
+#   new_R_roll  = -old_L_roll  slot 1 <- slot 0, sign -1
+#   new_L_pitch = +old_R_pitch slot 2 <- slot 4, sign +1
+#   new_L_yaw   = -old_R_yaw   slot 3 <- slot 5, sign -1
+#   new_R_pitch = +old_L_pitch slot 4 <- slot 2, sign +1
+#   new_R_yaw   = -old_L_yaw   slot 5 <- slot 3, sign -1
 _WRIST_PERM  = (1, 0, 4, 5, 2, 3)
 _WRIST_SIGNS = (-1.0, -1.0, 1.0, -1.0, 1.0, -1.0)
 
 
 def _mirror_wrist_torque(x: torch.Tensor) -> torch.Tensor:
-    """Mirror 6-D wrist torque obs. Args: x — (..., 6). Returns: same shape."""
+    """Mirror 6-D wrist torque obs. Args: x: (..., 6). Returns: same shape."""
     perm = torch.as_tensor(_WRIST_PERM, device=x.device, dtype=torch.long)
     signs = torch.as_tensor(_WRIST_SIGNS, device=x.device, dtype=x.dtype)
     return torch.index_select(x, dim=-1, index=perm) * signs
 
 
-# ==================== carry obs layout (124 dims) ====================
-
+# Carry obs layout (124 dims).
 CARRY_OBS_DIM = 124
 
 CARRY_OBS_LAYOUT = {
@@ -135,7 +132,7 @@ CARRY_OBS_SIGNS = {
 
 def mirror_carry_obs(obs: torch.Tensor) -> torch.Tensor:
     """Mirror a concatenated carry obs tensor.
-    Args: obs — (..., k*CARRY_OBS_DIM) tensor for k >= 1 stacked timesteps.
+    Args: obs: (..., k*CARRY_OBS_DIM) tensor for k >= 1 stacked timesteps.
     Returns: mirrored tensor, same shape.
     """
     assert obs.shape[-1] % CARRY_OBS_DIM == 0, (
@@ -168,18 +165,18 @@ def mirror_carry_obs(obs: torch.Tensor) -> torch.Tensor:
 
 def mirror_carry_actions(actions: torch.Tensor) -> torch.Tensor:
     """Mirror carry actions (29-D joint targets).
-    Args: actions — (..., 29) tensor.
+    Args: actions: (..., 29) tensor.
     Returns: mirrored actions, same shape.
     """
     return _switch_g1_joints_left_right(actions)
 
 
-# ==================== snapshot buffer mirror (numpy) ====================
-# Used by src.collect_buffer to double a terminal-state buffer by appending the
-# sagittal mirror of every sample. Operates on the yaw-aligned schema dumped by
-# collect_buffer._snapshot: root_z, quat_zy, lin_vel_by, ang_vel_by, joint_pos,
-# joint_vel (+ optionally box_pos_by, box_quat_by, box_lin_vel_by, box_ang_vel_by).
-# All vector/quat fields live in the body-yaw-aligned frame, so mirror is direct.
+# Snapshot buffer mirror (numpy): used by src.collect_buffer to double a terminal-state
+# buffer by appending the sagittal mirror of every sample. Operates on the yaw-aligned
+# schema dumped by collect_buffer._snapshot: root_z, quat_zy, lin_vel_by, ang_vel_by,
+# joint_pos, joint_vel (+ optionally box_pos_by, box_quat_by, box_lin_vel_by,
+# box_ang_vel_by). All vector/quat fields live in the body-yaw-aligned frame, so mirror
+# is direct.
 
 import numpy as np
 
@@ -193,7 +190,7 @@ def _np_switch_joints(x: "np.ndarray") -> "np.ndarray":
 
 
 def _np_mirror_body_quat(q: "np.ndarray") -> "np.ndarray":
-    """Sagittal mirror of a body-frame quaternion (w, x, y, z) -> (w, -x, y, -z)."""
+    """Sagittal mirror of a body-frame quaternion (w, x, y, z) to (w, -x, y, -z)."""
     m = q.copy()
     m[..., 1] *= -1.0
     m[..., 3] *= -1.0
@@ -201,14 +198,14 @@ def _np_mirror_body_quat(q: "np.ndarray") -> "np.ndarray":
 
 
 def _np_mirror_vec(v: "np.ndarray") -> "np.ndarray":
-    """Regular 3-vector sagittal mirror (x, y, z) -> (x, -y, z)."""
+    """Regular 3-vector sagittal mirror (x, y, z) to (x, -y, z)."""
     m = v.copy()
     m[..., 1] *= -1.0
     return m
 
 
 def _np_mirror_pseudovec(w: "np.ndarray") -> "np.ndarray":
-    """Pseudo-vector sagittal mirror (wx, wy, wz) -> (-wx, wy, -wz)."""
+    """Pseudo-vector sagittal mirror (wx, wy, wz) to (-wx, wy, -wz)."""
     m = w.copy()
     m[..., 0] *= -1.0
     m[..., 2] *= -1.0
@@ -232,7 +229,7 @@ _SNAPSHOT_MIRROR_OPS = {
 
 def mirror_snapshot_buffer(buf: dict) -> dict:
     """Return a dict with the same keys where each array is doubled: [original; mirror].
-    Args: buf — dict from a collect_buffer .npz.
+    Args: buf: dict from a collect_buffer .npz.
     Returns: same keys, arrays of shape (2*N, ...).
     """
     out = {}
@@ -246,12 +243,11 @@ def mirror_snapshot_buffer(buf: dict) -> dict:
     return out
 
 
-# ==================== rsl_rl entrypoint ====================
-
+# rsl_rl entrypoint.
 @torch.no_grad()
 def mirror_g1_carry(env=None, obs=None, actions=None):
     """rsl_rl symmetry_cfg entrypoint. Returns doubled batch [original; mirrored].
-    Args: env — mjlab env (unused, kept for the rsl_rl API contract). obs — TensorDict with per-group keys, or plain tensor. actions — (N, 29) tensor, or None.
+    Args: env: mjlab env (unused, kept for the rsl_rl API contract); obs: TensorDict with per-group keys, or plain tensor; actions: (N, 29) tensor, or None.
     Returns: (obs_out, actions_out); each is None if the corresponding input is None, else doubled along the batch dim.
     """
     obs_out = None

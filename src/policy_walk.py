@@ -1,8 +1,8 @@
-###############################################################################
-# Project    : Humanoid Loco-Manipulation with the Unitree G1                 #
-# Developer  : Narayane Ribeiro Medeiros                                      #
-# Repository : https://github.com/narayanerm/Humanoid-Loco-Manipulation       #
-###############################################################################
+##########################################################################################
+# Project    : unitree-g1-humanoid-carry                                                 #
+# Developer  : Narayane Ribeiro Medeiros                                                 #
+# Repository : https://github.com/narayanerm/unitree-g1-humanoid-carry                   #
+##########################################################################################
 """G1 flat-velocity locomotion task (walk): env + PPO cfg, registered under TASK_ID.
 
 Input:  play flag (bool) for g1_flat_env_cfg; no external args elsewhere.
@@ -75,7 +75,7 @@ G1_FOOT_GEOMS = tuple(
 
 def single_stance_reward(env, sensor_name, command_name=None, command_threshold=0.05):
     """Reward +1 when exactly one foot contacts ground, gated by command magnitude.
-    Args: env — RL env; sensor_name — foot contact sensor; command_name — twist command key; command_threshold — activation floor.
+    Args: env: RL env; sensor_name: foot contact sensor; command_name: twist command key; command_threshold: activation floor.
     Returns: per-env reward tensor.
     """
     sensor = env.scene[sensor_name]
@@ -94,7 +94,7 @@ def single_stance_reward(env, sensor_name, command_name=None, command_threshold=
 
 def double_stance_reward(env, sensor_name, command_name=None, command_threshold=0.05):
     """Reward +1 when both feet contact ground, gated to activate only during standing commands.
-    Args: env — RL env; sensor_name — foot contact sensor; command_name — twist command key; command_threshold — standing ceiling.
+    Args: env: RL env; sensor_name: foot contact sensor; command_name: twist command key; command_threshold: standing ceiling.
     Returns: per-env reward tensor.
     """
     sensor = env.scene[sensor_name]
@@ -114,7 +114,7 @@ def double_stance_reward(env, sensor_name, command_name=None, command_threshold=
 def swing_height_error(env, sensor_name, height_sensor_name, target_height, sigma,
                        command_name="twist", command_threshold=0.05):
     """Quadratic penalty on foot height error while in swing (fuses foot_clearance + foot_swing_height).
-    Args: env — RL env; sensor_name — foot contact sensor; height_sensor_name — foot height scan; target_height/sigma — Gaussian center and width in meters; command_name/command_threshold — twist activity gate.
+    Args: env: RL env; sensor_name: foot contact sensor; height_sensor_name: foot height scan; target_height/sigma: Gaussian center and width in meters; command_name/command_threshold: twist activity gate.
     Returns: (num_envs,) non-negative penalty tensor summed across feet.
     """
     contact = env.scene[sensor_name]
@@ -132,7 +132,7 @@ def swing_height_error(env, sensor_name, height_sensor_name, target_height, sigm
 
 def wz_sign_penalty(env, command_name="twist"):
     """Penalise yaw-rate whose sign disagrees with commanded wz to remove rotation bias.
-    Args: env — RL env; command_name — twist command key.
+    Args: env: RL env; command_name: twist command key.
     Returns: per-env penalty tensor.
     """
     cmd = env.command_manager.get_term(command_name).vel_command_b[:, 2]
@@ -437,7 +437,7 @@ def build_g1_mdp():
 
 def g1_flat_env_cfg(play=False):
     """Assemble the full ManagerBasedRlEnvCfg for training or evaluation.
-    Args: play — when True disables noise/push and widens command ranges by 1.2x.
+    Args: play: when True disables noise/push and widens command ranges by 1.2x.
     Returns: ManagerBasedRlEnvCfg instance.
     """
     parts = build_g1_mdp()

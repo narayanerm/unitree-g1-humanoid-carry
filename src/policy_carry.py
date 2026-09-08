@@ -1,8 +1,8 @@
-###############################################################################
-# Project    : Humanoid Loco-Manipulation with the Unitree G1                 #
-# Developer  : Narayane Ribeiro Medeiros                                      #
-# Repository : https://github.com/narayanerm/Humanoid-Loco-Manipulation       #
-###############################################################################
+##########################################################################################
+# Project    : unitree-g1-humanoid-carry                                                 #
+# Developer  : Narayane Ribeiro Medeiros                                                 #
+# Repository : https://github.com/narayanerm/unitree-g1-humanoid-carry                   #
+##########################################################################################
 """G1 carry task: walk while carrying a box (warm-started from the walk policy).
 
 Input:  play flag (bool) for g1_carry_env_cfg; no external args elsewhere.
@@ -176,7 +176,7 @@ def _get_box_spec() -> mujoco.MjSpec:
 
 def _entity_pos(env: ManagerBasedRlEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     """Return world-frame position of an entity body or its root link.
-    Args: env — RL env; asset_cfg — scene entity selector (optionally body-scoped).
+    Args: env: RL env; asset_cfg: scene entity selector (optionally body-scoped).
     Returns: (num_envs, 3) tensor of world positions.
     """
     entity: Entity = env.scene[asset_cfg.name]
@@ -195,7 +195,7 @@ def _base_yaw_quat_w(env) -> torch.Tensor:
 
 def body_vector(env, source_cfg, target_cfg):
     """Vector from source body to target body expressed in the robot's body-yaw frame.
-    Args: env — RL env; source_cfg — origin entity; target_cfg — destination entity.
+    Args: env: RL env; source_cfg: origin entity; target_cfg: destination entity.
     Returns: (num_envs, 3) delta tensor in body-yaw frame (y=0 is the sagittal plane).
     """
     rel_w = _entity_pos(env, target_cfg) - _entity_pos(env, source_cfg)
@@ -204,7 +204,7 @@ def body_vector(env, source_cfg, target_cfg):
 
 def box_position_obs(env, box_cfg):
     """Robot-to-box position in body-yaw frame, clipped to a safe observation range.
-    Args: env — RL env; box_cfg — box scene entity.
+    Args: env: RL env; box_cfg: box scene entity.
     Returns: (num_envs, 3) tensor clamped to [-3, 3].
     """
     box_pos = env.scene[box_cfg.name].data.root_link_pos_w
@@ -215,7 +215,7 @@ def box_position_obs(env, box_cfg):
 
 def box_lin_vel_obs(env, box_cfg):
     """Box world-frame linear velocity clipped for observation stability.
-    Args: env — RL env; box_cfg — box scene entity.
+    Args: env: RL env; box_cfg: box scene entity.
     Returns: (num_envs, 3) tensor clamped to [-5, 5].
     """
     v = env.scene[box_cfg.name].data.root_link_lin_vel_w
@@ -224,7 +224,7 @@ def box_lin_vel_obs(env, box_cfg):
 
 def box_ang_vel_obs(env, box_cfg):
     """Box world-frame angular velocity clipped for observation stability.
-    Args: env — RL env; box_cfg — box scene entity.
+    Args: env: RL env; box_cfg: box scene entity.
     Returns: (num_envs, 3) tensor clamped to [-10, 10].
     """
     w = env.scene[box_cfg.name].data.root_link_ang_vel_w
@@ -233,7 +233,7 @@ def box_ang_vel_obs(env, box_cfg):
 
 def box_orientation_obs(env, box_cfg):
     """Box orientation in the robot's body-yaw frame, clipped to unit range.
-    Args: env — RL env; box_cfg — box scene entity.
+    Args: env: RL env; box_cfg: box scene entity.
     Returns: (num_envs, 4) wxyz quaternion tensor.
     """
     q_w = env.scene[box_cfg.name].data.root_link_quat_w
@@ -243,7 +243,7 @@ def box_orientation_obs(env, box_cfg):
 
 def box_size_obs(env):
     """Constant per-env box half-extents broadcast for the observation vector.
-    Args: env — RL env.
+    Args: env: RL env.
     Returns: (num_envs, 3) tensor of full box side lengths.
     """
     root_pos = env.scene["robot"].data.root_link_pos_w
@@ -253,7 +253,7 @@ def box_size_obs(env):
 
 def wrist_actuator_force_obs(env, asset_cfg: SceneEntityCfg):
     """Extract wrist actuator forces for the requested actuator subset.
-    Args: env — RL env; asset_cfg — robot entity selecting wrist actuators.
+    Args: env: RL env; asset_cfg: robot entity selecting wrist actuators.
     Returns: (num_envs, num_wrist_actuators) force tensor.
     """
     robot: Entity = env.scene[asset_cfg.name]
@@ -272,7 +272,7 @@ def non_hand_box_contact_penalty(
     threshold: float = 0.22,
 ):
     """Penalize the box coming too close to trunk, hips, or shanks.
-    Args: env — RL env; trunk_cfg/left_shank_cfg/right_shank_cfg/left_hip_cfg/right_hip_cfg — body selectors; box_cfg — box selector; threshold — proximity distance in meters.
+    Args: env: RL env; trunk_cfg/left_shank_cfg/right_shank_cfg/left_hip_cfg/right_hip_cfg: body selectors; box_cfg: box selector; threshold: proximity distance in meters.
     Returns: (num_envs,) non-negative penalty summed across body parts.
     """
     box_pos = _entity_pos(env, box_cfg)
@@ -289,7 +289,7 @@ _PICK_BUFFER_CACHE: dict[str, torch.Tensor] | None = None
 
 def _load_pick_buffer(path: str, device: torch.device) -> dict[str, torch.Tensor]:
     """Load and cache the pick terminal-state buffer (robot + held box) as device tensors.
-    Args: path — buffer file path; device — target torch device.
+    Args: path: buffer file path; device: target torch device.
     Returns: dict of tensors keyed by buffer field, cached across calls.
     """
     global _PICK_BUFFER_CACHE
@@ -326,7 +326,7 @@ def reset_from_pick_buffer(
     box_cfg: SceneEntityCfg,
 ) -> None:
     """Warm-start robot + held box by sampling from the pick terminal-state buffer.
-    Args: env — RL env; env_ids — envs to reset (None = all); buffer_path — pick buffer file; xy_range/yaw_range — jitter ranges applied jointly to robot+box; asset_cfg — robot entity selector; box_cfg — box entity selector.
+    Args: env: RL env; env_ids: envs to reset (None = all); buffer_path: pick buffer file; xy_range/yaw_range: jitter ranges applied jointly to robot+box; asset_cfg: robot entity selector; box_cfg: box entity selector.
     Returns: none.
     """
     from mjlab.utils.lab_api.math import (
@@ -423,7 +423,7 @@ BOX_HOLD_Z_ABOVE_ROOT = 0.17
 BOX_HOLD_Z         = CHEST_Z
 BOX_DROP_Z         = CHEST_Z - 0.40
 
-# Legacy hugging-arm pose — carry now warm-starts from pick_buffer so these are no longer used by
+# Legacy hugging-arm pose: carry now warm-starts from pick_buffer so these are no longer used by
 # the main carry env; kept as exports because policy_carry_soft (ball-lattice box) still needs a
 # procedural reset (the pick buffer has a rigid box that doesn't match the lattice scene).
 HOLDING_ARM_POSE = {
@@ -456,7 +456,7 @@ def reset_robot_and_box_held(
     box_xy_jitter: float = 0.02,
 ) -> None:
     """Procedural reset: robot at default pose with xy+yaw jitter, box teleported into the hugging offset.
-    Args: env — RL env; env_ids — envs to reset (None = all); box_cfg — box entity; xy_jitter_robot — root xy noise; yaw_range — base yaw range; box_x_offset — forward hand spacing in body frame; box_z_above_root — box height above root; box_xy_jitter — box lateral noise.
+    Args: env: RL env; env_ids: envs to reset (None = all); box_cfg: box entity; xy_jitter_robot: root xy noise; yaw_range: base yaw range; box_x_offset: forward hand spacing in body frame; box_z_above_root: box height above root; box_xy_jitter: box lateral noise.
     Returns: none.
 
     Mirror of reset_robot_and_soft_box for the rigid-box variant. Reinstates the
@@ -515,7 +515,7 @@ def reset_arms_to_holding(
     asset_cfg: SceneEntityCfg,
 ) -> None:
     """Snap the 14 arm joints to HOLDING_ARM_POSE (used by the procedural reset chain in policy_carry and policy_carry_soft).
-    Args: env — RL env; env_ids — envs to reset (None = all); asset_cfg — robot entity selecting the 14 arm joints.
+    Args: env: RL env; env_ids: envs to reset (None = all); asset_cfg: robot entity selecting the 14 arm joints.
     Returns: none.
     """
     if env_ids is None:
@@ -565,7 +565,7 @@ _SYM_SIGNS        = tuple(float(p[2]) for p in _SYMMETRIC_PAIRS)
 
 def hold_box_reward(env, left_hand_cfg, right_hand_cfg, box_cfg, target_z: float = CHEST_Z) -> torch.Tensor:
     """Reward symmetric hand grip on the box side faces AND box at target chest height.
-    Args: env — RL env; left_hand_cfg/right_hand_cfg — hand body selectors; box_cfg — box entity; target_z — desired box z (absorbs former box_at_chest term).
+    Args: env: RL env; left_hand_cfg/right_hand_cfg: hand body selectors; box_cfg: box entity; target_z: desired box z (absorbs former box_at_chest term).
     Returns: (num_envs,) reward in (0, 1].
     """
     left  = _entity_pos(env, left_hand_cfg)
@@ -595,7 +595,7 @@ def hold_box_reward(env, left_hand_cfg, right_hand_cfg, box_cfg, target_z: float
 
 def box_orientation_reward(env, box_cfg) -> torch.Tensor:
     """Fused orientation reward: box +z aligned with world +z AND box +x aligned with robot heading.
-    Args: env — RL env; box_cfg — box entity.
+    Args: env: RL env; box_cfg: box entity.
     Returns: (num_envs,) reward in [0, 2] (sum of two clamped cosines).
     """
     entity: Entity = env.scene[box_cfg.name]
@@ -611,7 +611,7 @@ def box_orientation_reward(env, box_cfg) -> torch.Tensor:
 
 def upright_torso_reward(env, trunk_cfg) -> torch.Tensor:
     """Reward torso local +z aligned with world +z.
-    Args: env — RL env; trunk_cfg — torso body selector.
+    Args: env: RL env; trunk_cfg: torso body selector.
     Returns: (num_envs,) reward clamped to [0, 1].
     """
     entity: Entity = env.scene[trunk_cfg.name]
@@ -628,7 +628,7 @@ def symmetric_pose_penalty(
     feet_moving_threshold: float = 0.1,
 ) -> torch.Tensor:
     """Penalize left/right asymmetry on mirrored joints while the robot is moving.
-    Args: env — RL env; left_cfg/right_cfg — mirrored joint selectors; feet_moving_threshold — base xy speed gate in m/s.
+    Args: env: RL env; left_cfg/right_cfg: mirrored joint selectors; feet_moving_threshold: base xy speed gate in m/s.
     Returns: (num_envs,) squared-error penalty (0 when standing still).
     """
     robot = env.scene[left_cfg.name]
@@ -647,7 +647,7 @@ def symmetric_pose_penalty(
 def single_stance_reward(env, sensor_name: str, command_name: str | None = None,
                          command_threshold: float = 0.05) -> torch.Tensor:
     """Reward exactly one foot in ground contact, gated by twist magnitude.
-    Args: env — RL env; sensor_name — contact-sensor name; command_name — twist command key (None keeps the reward always active); command_threshold — minimum |v_xy| + |wz| to activate.
+    Args: env: RL env; sensor_name: contact-sensor name; command_name: twist command key (None keeps the reward always active); command_threshold: minimum |v_xy| + |wz| to activate.
     Returns: (num_envs,) 0/1 reward zeroed when the command is near zero (so the policy is not paid to step in place while idle).
     """
     sensor = env.scene[sensor_name]
@@ -666,7 +666,7 @@ def single_stance_reward(env, sensor_name: str, command_name: str | None = None,
 def double_stance_reward(env, sensor_name: str, command_name: str | None = None,
                          command_threshold: float = 0.05) -> torch.Tensor:
     """Reward both feet in ground contact, gated to activate only during standing commands.
-    Args: env — RL env; sensor_name — contact-sensor name; command_name — twist command key (None keeps the reward always active); command_threshold — maximum |v_xy| + |wz| for the standing gate.
+    Args: env: RL env; sensor_name: contact-sensor name; command_name: twist command key (None keeps the reward always active); command_threshold: maximum |v_xy| + |wz| for the standing gate.
     Returns: (num_envs,) 0/1 reward active when the command is near zero, mirror of single_stance.
     """
     sensor = env.scene[sensor_name]
@@ -684,7 +684,7 @@ def double_stance_reward(env, sensor_name: str, command_name: str | None = None,
 
 def action_rate_l2(env) -> torch.Tensor:
     """Sum of squared action deltas between consecutive steps.
-    Args: env — RL env.
+    Args: env: RL env.
     Returns: (num_envs,) non-negative smoothness penalty.
     """
     return torch.sum(
@@ -701,7 +701,7 @@ def carry_failed(
     box_min_z: float = BOX_DROP_Z,
 ) -> torch.Tensor:
     """Termination flag when the torso tips over or the box drops.
-    Args: env — RL env; box_cfg — box entity; trunk_cfg — torso body; limit_angle — max torso tilt in radians; box_min_z — drop height threshold.
+    Args: env: RL env; box_cfg: box entity; trunk_cfg: torso body; limit_angle: max torso tilt in radians; box_min_z: drop height threshold.
     Returns: (num_envs,) boolean termination mask.
     """
     entity: Entity = env.scene[trunk_cfg.name]
@@ -992,7 +992,7 @@ def build_g1_carry_mdp():
 
 def g1_carry_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     """Build the ManagerBasedRlEnvCfg for the carry task.
-    Args: play — when True disables observation noise and push events.
+    Args: play: when True disables observation noise and push events.
     Returns: fully populated ManagerBasedRlEnvCfg.
     """
     parts = build_g1_carry_mdp()

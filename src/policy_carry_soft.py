@@ -1,8 +1,8 @@
-###############################################################################
-# Project    : Humanoid Loco-Manipulation with the Unitree G1                 #
-# Developer  : Narayane Ribeiro Medeiros                                      #
-# Repository : https://github.com/narayanerm/Humanoid-Loco-Manipulation       #
-###############################################################################
+##########################################################################################
+# Project    : unitree-g1-humanoid-carry                                                 #
+# Developer  : Narayane Ribeiro Medeiros                                                 #
+# Repository : https://github.com/narayanerm/unitree-g1-humanoid-carry                   #
+##########################################################################################
 """G1 carry task with a deformable ball-lattice payload.
 
 Same MDP as ``config/policy_carry`` (walk-warm-started, twist-driven, hugging-arm
@@ -14,7 +14,7 @@ The lattice replaces the single solid box:
 * Each of ``N^3`` balls is a separate ``mjlab`` entity ``ball_<i>``. Each ball has a
   freejoint + sphere geom (radius ``BALL_R``, mass ``BALL_MASS``).
 * Tendons connecting neighbours (axial + face diagonals) are attached at scene-compile
-  time via ``SceneCfg.spec_fn`` — this lets us reference sites across entities.
+  time via ``SceneCfg.spec_fn``: this lets us reference sites across entities.
 * Ball-ball self-collision is disabled via ``contype/conaffinity`` (only ball-ground
   contacts). Otherwise N^3 free spheres bumping each other would explode the solver.
 
@@ -147,7 +147,7 @@ def _effective_springs() -> tuple[float, float, float, float]:
 def configure(n: int = 3, softness: float = 1.0, bounciness: float = 1.0,
               ball_radius_m: float | None = None) -> None:
     """Set lattice size and deformability knobs before register().
-    Args: n — lattice edge count (>=2); softness — divides tendon stiffness; bounciness — divides tendon damping; ball_radius_m — override ball radius (must be <= 0.49 * spacing).
+    Args: n: lattice edge count (>=2); softness: divides tendon stiffness; bounciness: divides tendon damping; ball_radius_m: override ball radius (must be <= 0.49 * spacing).
     Returns: none.
     """
     global SOFT_N, SOFT_SPACING, SOFT_BALL_R, SOFTNESS, BOUNCINESS
@@ -173,7 +173,7 @@ def configure(n: int = 3, softness: float = 1.0, bounciness: float = 1.0,
 
 def _lattice_indices(n: int) -> list[tuple[int, int, int]]:
     """Enumerate (ix, iy, iz) tuples for a full n^3 solid lattice.
-    Args: n — lattice edge count.
+    Args: n: lattice edge count.
     Returns: list of index tuples in ix->iy->iz order.
     """
     return [(ix, iy, iz) for ix in range(n) for iy in range(n) for iz in range(n)]
@@ -181,7 +181,7 @@ def _lattice_indices(n: int) -> list[tuple[int, int, int]]:
 
 def _index_name(ix: int, iy: int, iz: int) -> str:
     """Deterministic per-ball entity name from lattice indices.
-    Args: ix, iy, iz — lattice indices.
+    Args: ix, iy, iz: lattice indices.
     Returns: entity name string ball_ijk.
     """
     return f"ball_{ix}{iy}{iz}"
@@ -189,7 +189,7 @@ def _index_name(ix: int, iy: int, iz: int) -> str:
 
 def _lattice_offsets(n: int) -> list[tuple[float, float, float]]:
     """Body-frame offset for each lattice node, centred at the origin.
-    Args: n — lattice edge count.
+    Args: n: lattice edge count.
     Returns: list of (dx, dy, dz) offsets in meters.
     """
     half = (n - 1) * SOFT_SPACING * 0.5
@@ -201,7 +201,7 @@ def _lattice_offsets(n: int) -> list[tuple[float, float, float]]:
 
 def _make_ball_spec_fn(name: str, radius: float, mass: float):
     """Build a spec_fn producing a single sphere with self-collision disabled.
-    Args: name — body/geom base name; radius — sphere radius; mass — sphere mass.
+    Args: name: body/geom base name; radius: sphere radius; mass: sphere mass.
     Returns: zero-arg callable returning a fresh mujoco.MjSpec.
     """
     def _spec() -> mujoco.MjSpec:
@@ -233,7 +233,7 @@ def _make_ball_spec_fn(name: str, radius: float, mass: float):
 
 def _soft_box_tendons_spec_fn(spec: mujoco.MjSpec) -> None:
     """Scene-level spec_fn that wires all lattice tendons after ball entities are merged.
-    Args: spec — merged scene MjSpec with per-ball sites already added.
+    Args: spec: merged scene MjSpec with per-ball sites already added.
     Returns: none (mutates spec in place).
     """
     n = SOFT_N
@@ -257,7 +257,7 @@ def _soft_box_tendons_spec_fn(spec: mujoco.MjSpec) -> None:
 
     def add_spring(a: str, b: str, rest_len: float, k: float, d: float, tag: str):
         """Add a two-site spring tendon between sites a and b.
-        Args: a — first site name; b — second site name; rest_len — rest length in meters; k — stiffness; d — damping; tag — short spring category label.
+        Args: a: first site name; b: second site name; rest_len: rest length in meters; k: stiffness; d: damping; tag: short spring category label.
         Returns: none.
         """
         t = spec.add_tendon()
@@ -294,7 +294,7 @@ def _soft_box_tendons_spec_fn(spec: mujoco.MjSpec) -> None:
 
 def _all_ball_positions_w(env: ManagerBasedRlEnv, ball_names: tuple[str, ...]) -> torch.Tensor:
     """Stack world-frame ball positions into a single tensor.
-    Args: env — RL env; ball_names — ordered tuple of ball entity names.
+    Args: env: RL env; ball_names: ordered tuple of ball entity names.
     Returns: (num_envs, K, 3) position tensor with K = len(ball_names).
     """
     return torch.stack(
@@ -304,7 +304,7 @@ def _all_ball_positions_w(env: ManagerBasedRlEnv, ball_names: tuple[str, ...]) -
 
 def _lattice_centroid(env: ManagerBasedRlEnv, ball_names: tuple[str, ...]) -> torch.Tensor:
     """Mean world-frame position of every ball in the lattice.
-    Args: env — RL env; ball_names — ordered tuple of ball entity names.
+    Args: env: RL env; ball_names: ordered tuple of ball entity names.
     Returns: (num_envs, 3) centroid tensor.
     """
     return _all_ball_positions_w(env, ball_names).mean(dim=1)
@@ -312,7 +312,7 @@ def _lattice_centroid(env: ManagerBasedRlEnv, ball_names: tuple[str, ...]) -> to
 
 def _lattice_mean_lin_vel(env: ManagerBasedRlEnv, ball_names: tuple[str, ...]) -> torch.Tensor:
     """Mean world-frame linear velocity across all balls.
-    Args: env — RL env; ball_names — ordered tuple of ball entity names.
+    Args: env: RL env; ball_names: ordered tuple of ball entity names.
     Returns: (num_envs, 3) mean velocity tensor.
     """
     stacked = torch.stack(
@@ -325,7 +325,7 @@ def _ball_positions_body_frame(
     env: ManagerBasedRlEnv, ball_names: tuple[str, ...],
 ) -> torch.Tensor:
     """Ball positions in the robot yaw-frame relative to root, yaw-invariant.
-    Args: env — RL env; ball_names — ordered tuple of ball entity names.
+    Args: env: RL env; ball_names: ordered tuple of ball entity names.
     Returns: (num_envs, K, 3) body-frame position tensor.
     """
     positions_w = _all_ball_positions_w(env, ball_names)  # (num_envs, K, 3)
@@ -346,7 +346,7 @@ _NOMINAL_KEY = "carry_soft_nominal_offsets"
 
 def _nominal_body_positions(env: ManagerBasedRlEnv) -> torch.Tensor:
     """Nominal body-frame position of each ball relative to the robot root.
-    Args: env — RL env.
+    Args: env: RL env.
     Returns: (K, 3) nominal position tensor matching reset_robot_and_soft_box.
     """
     cached = env.extras.get(_NOMINAL_KEY)
@@ -366,7 +366,7 @@ def _nominal_body_positions(env: ManagerBasedRlEnv) -> torch.Tensor:
 
 def _lattice_extents(env: ManagerBasedRlEnv, ball_names: tuple[str, ...]) -> torch.Tensor:
     """Body-frame AABB extent (max - min per axis) of the lattice.
-    Args: env — RL env; ball_names — ordered tuple of ball entity names.
+    Args: env: RL env; ball_names: ordered tuple of ball entity names.
     Returns: (num_envs, 3) extent tensor with nominal 2*BOX_HALF per axis.
     """
     body = _ball_positions_body_frame(env, ball_names)  # (num_envs, K, 3)
@@ -375,7 +375,7 @@ def _lattice_extents(env: ManagerBasedRlEnv, ball_names: tuple[str, ...]) -> tor
 
 def soft_box_position_obs(env, ball_names: tuple[str, ...]):
     """Observation: robot-relative lattice centroid, clipped for stability.
-    Args: env — RL env; ball_names — ordered tuple of ball entity names.
+    Args: env: RL env; ball_names: ordered tuple of ball entity names.
     Returns: (num_envs, 3) tensor clamped to [-3, 3].
     """
     centroid = _lattice_centroid(env, ball_names)
@@ -386,7 +386,7 @@ def soft_box_position_obs(env, ball_names: tuple[str, ...]):
 
 def soft_box_lin_vel_obs(env, ball_names: tuple[str, ...]):
     """Observation: mean lattice linear velocity, clipped for stability.
-    Args: env — RL env; ball_names — ordered tuple of ball entity names.
+    Args: env: RL env; ball_names: ordered tuple of ball entity names.
     Returns: (num_envs, 3) tensor clamped to [-5, 5].
     """
     v = _lattice_mean_lin_vel(env, ball_names)
@@ -395,7 +395,7 @@ def soft_box_lin_vel_obs(env, ball_names: tuple[str, ...]):
 
 def soft_box_size_obs(env):
     """Observation: nominal lattice bounding-box size, matching the solid box.
-    Args: env — RL env.
+    Args: env: RL env.
     Returns: (num_envs, 3) constant size tensor.
     """
     root_pos = env.scene["robot"].data.root_link_pos_w
@@ -405,7 +405,7 @@ def soft_box_size_obs(env):
 
 def lattice_extents_obs(env, ball_names: tuple[str, ...]):
     """Observation: body-frame lattice AABB extents, clipped for stability.
-    Args: env — RL env; ball_names — ordered tuple of ball entity names.
+    Args: env: RL env; ball_names: ordered tuple of ball entity names.
     Returns: (num_envs, 3) tensor clamped to [0, 1].
     """
     ext = _lattice_extents(env, ball_names)
@@ -415,7 +415,7 @@ def lattice_extents_obs(env, ball_names: tuple[str, ...]):
 def hold_soft_box_reward(env, left_hand_cfg, right_hand_cfg, ball_names: tuple[str, ...],
                          y_offset: float = 0.13, z_offset: float = 0.02) -> torch.Tensor:
     """Reward symmetric hand grip on the lattice centroid in the robot yaw frame.
-    Args: env — RL env; left_hand_cfg/right_hand_cfg — hand body selectors; ball_names — tuple of ball entity names; y_offset — lateral hand spacing in meters; z_offset — vertical hand offset.
+    Args: env: RL env; left_hand_cfg/right_hand_cfg: hand body selectors; ball_names: tuple of ball entity names; y_offset: lateral hand spacing in meters; z_offset: vertical hand offset.
     Returns: (num_envs,) reward in (0, 1].
     """
     left  = _entity_pos(env, left_hand_cfg)
@@ -436,7 +436,7 @@ def hold_soft_box_reward(env, left_hand_cfg, right_hand_cfg, ball_names: tuple[s
 def soft_box_at_chest_reward(env, ball_names: tuple[str, ...],
                              target_z: float = CHEST_Z) -> torch.Tensor:
     """Gaussian reward on lattice centroid height around chest height.
-    Args: env — RL env; ball_names — tuple of ball entity names; target_z — desired centroid z in meters.
+    Args: env: RL env; ball_names: tuple of ball entity names; target_z: desired centroid z in meters.
     Returns: (num_envs,) reward in (0, 1].
     """
     centroid_z = _lattice_centroid(env, ball_names)[:, 2]
@@ -448,7 +448,7 @@ def lattice_shape_preservation_reward(
     env, ball_names: tuple[str, ...], sigma: float = 0.06,
 ) -> torch.Tensor:
     """Gaussian reward on the RMS body-frame displacement from nominal lattice slots.
-    Args: env — RL env; ball_names — tuple of ball entity names; sigma — Gaussian bandwidth in meters.
+    Args: env: RL env; ball_names: tuple of ball entity names; sigma: Gaussian bandwidth in meters.
     Returns: (num_envs,) reward in (0, 1].
     """
     body = _ball_positions_body_frame(env, ball_names)          # (num_envs, K, 3)
@@ -460,7 +460,7 @@ def lattice_shape_preservation_reward(
 
 def lattice_bbox_penalty(env, ball_names: tuple[str, ...]) -> torch.Tensor:
     """L1 deviation of the current lattice extents from the nominal cube side.
-    Args: env — RL env; ball_names — tuple of ball entity names.
+    Args: env: RL env; ball_names: tuple of ball entity names.
     Returns: (num_envs,) non-negative penalty summed over xyz.
     """
     ext = _lattice_extents(env, ball_names)                     # (num_envs, 3)
@@ -473,7 +473,7 @@ def non_hand_soft_box_contact_penalty(
     ball_names: tuple[str, ...], threshold: float = 0.22,
 ) -> torch.Tensor:
     """Penalize the lattice centroid coming too close to trunk, hips, or shanks.
-    Args: env — RL env; trunk_cfg/left_shank_cfg/right_shank_cfg/left_hip_cfg/right_hip_cfg — body selectors; ball_names — tuple of ball entity names; threshold — proximity distance in meters.
+    Args: env: RL env; trunk_cfg/left_shank_cfg/right_shank_cfg/left_hip_cfg/right_hip_cfg: body selectors; ball_names: tuple of ball entity names; threshold: proximity distance in meters.
     Returns: (num_envs,) non-negative penalty summed across body parts.
     """
     centroid = _lattice_centroid(env, ball_names)
@@ -489,7 +489,7 @@ def soft_box_carry_failed(env, ball_names: tuple[str, ...], trunk_cfg,
                           limit_angle: float = math.radians(65.0),
                           box_min_z: float = BOX_DROP_Z) -> torch.Tensor:
     """Termination flag when the torso tips over or the lattice centroid drops.
-    Args: env — RL env; ball_names — tuple of ball entity names; trunk_cfg — torso body; limit_angle — max torso tilt in radians; box_min_z — drop height threshold in meters.
+    Args: env: RL env; ball_names: tuple of ball entity names; trunk_cfg: torso body; limit_angle: max torso tilt in radians; box_min_z: drop height threshold in meters.
     Returns: (num_envs,) boolean termination mask.
     """
     trunk_ent: Entity = env.scene[trunk_cfg.name]
@@ -512,7 +512,7 @@ def reset_robot_and_soft_box(
     lattice_z_jitter: float = 0.002,
 ) -> None:
     """Reset robot and every lattice ball in one pass with a shared sampled yaw.
-    Args: env — RL env; env_ids — envs to reset (None = all); ball_cfgs — tuple of ball entities; xy_jitter_robot — root xy noise; yaw_range — base yaw range; box_x_offset — forward hand spacing; box_z_above_root — lattice height above root; box_xy_jitter — box lateral noise; lattice_z_jitter — per-ball vertical noise.
+    Args: env: RL env; env_ids: envs to reset (None = all); ball_cfgs: tuple of ball entities; xy_jitter_robot: root xy noise; yaw_range: base yaw range; box_x_offset: forward hand spacing; box_z_above_root: lattice height above root; box_xy_jitter: box lateral noise; lattice_z_jitter: per-ball vertical noise.
     Returns: none.
     """
     if env_ids is None:
@@ -581,7 +581,7 @@ def uniform_split_ball_mass_dr(
     total_mass_range: tuple[float, float] = (SOFT_TOTAL_MASS_MIN, SOFT_TOTAL_MASS_MAX),
 ) -> None:
     """Sample per-env total payload and split equally across all lattice balls.
-    Args: env — RL env; env_ids — envs to randomize (None = all); ball_cfgs — tuple of ball entities; total_mass_range — uniform range for total payload in kg.
+    Args: env: RL env; env_ids: envs to randomize (None = all); ball_cfgs: tuple of ball entities; total_mass_range: uniform range for total payload in kg.
     Returns: none.
     """
     if env_ids is None:
@@ -723,7 +723,7 @@ def build_g1_carry_soft_mdp():
         "twist": UniformVelocityCommandCfg(
             entity_name="robot",
             resampling_time_range=(4.0, 8.0),
-            rel_standing_envs=0.05,
+            rel_standing_envs=0.20,
             rel_heading_envs=0.20,
             rel_forward_envs=0.10,
             heading_command=True,
@@ -860,7 +860,7 @@ def build_g1_carry_soft_mdp():
 
 def g1_carry_soft_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     """Build the ManagerBasedRlEnvCfg for the deformable-lattice carry task.
-    Args: play — when True disables observation noise and push events.
+    Args: play: when True disables observation noise and push events.
     Returns: fully populated ManagerBasedRlEnvCfg.
     """
     parts = build_g1_carry_soft_mdp()
