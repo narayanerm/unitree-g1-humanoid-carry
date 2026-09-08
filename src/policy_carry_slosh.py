@@ -1,8 +1,8 @@
-###############################################################################
-# Project    : Humanoid Loco-Manipulation with the Unitree G1                 #
-# Developer  : Narayane Ribeiro Medeiros                                      #
-# Repository : https://github.com/narayanerm/Humanoid-Loco-Manipulation       #
-###############################################################################
+##########################################################################################
+# Project    : unitree-g1-humanoid-carry                                                 #
+# Developer  : Narayane Ribeiro Medeiros                                                 #
+# Repository : https://github.com/narayanerm/unitree-g1-humanoid-carry                   #
+##########################################################################################
 """G1 carry task with a slosh payload: hollow semi-transparent box containing N free-floating balls.
 
 Same MDP as ``config/policy_carry`` (walk-warm-started, twist-driven, hugging-arm reset),
@@ -79,7 +79,7 @@ SNAPSHOT_YAW_ALIGN = True
 
 def configure(num_balls: int = 1, ball_radius_m: float | None = None) -> None:
     """Set ball count and radius before register(); raises if the balls don't fit.
-    Args: num_balls — number of balls to spawn; ball_radius_m — ball radius in meters (None keeps BOX_HALF/4).
+    Args: num_balls: number of balls to spawn; ball_radius_m: ball radius in meters (None keeps BOX_HALF/4).
     Returns: none.
     """
     global NUM_BALLS, BALL_RADIUS
@@ -93,7 +93,7 @@ def configure(num_balls: int = 1, ball_radius_m: float | None = None) -> None:
 
 def radius_from_fill_pct(num_balls: int, interior_fill_pct: float) -> float:
     """Compute the ball radius achieving a target interior-volume fill percent.
-    Args: num_balls — number of balls; interior_fill_pct — desired fill in (0, 100].
+    Args: num_balls: number of balls; interior_fill_pct: desired fill in (0, 100].
     Returns: ball radius in meters (does not verify geometric fit).
     """
     assert num_balls >= 1
@@ -113,7 +113,7 @@ def check_fits(
     verbose: bool = True,
 ) -> dict:
     """Verify N balls fit inside the hollow box on an auto-sized 3D grid.
-    Args: num_balls — number of balls; ball_radius_m — sphere radius; ball_gap_m — centre-to-centre clearance; wall_margin_m — reset-jitter margin from walls; verbose — print summary line.
+    Args: num_balls: number of balls; ball_radius_m: sphere radius; ball_gap_m: centre-to-centre clearance; wall_margin_m: reset-jitter margin from walls; verbose: print summary line.
     Returns: dict with grid layout, pile height, headroom, and fill fraction; raises ValueError on overflow.
     """
     assert num_balls >= 1
@@ -123,7 +123,7 @@ def check_fits(
     step         = 2.0 * ball_radius_m + ball_gap_m     # centre-to-centre spacing
     if 2.0 * usable_half < 2.0 * ball_radius_m:
         raise ValueError(
-            f"ball radius {ball_radius_m*1000:.2f} mm too large — a single ball "
+            f"ball radius {ball_radius_m*1000:.2f} mm too large: a single ball "
             f"doesn't fit inside the interior ({inner_half*2000:.1f} mm side, "
             f"{wall_margin_m*1000:.0f} mm jitter margin)."
         )
@@ -152,7 +152,7 @@ def check_fits(
     }
     if headroom < 0.0:
         msg = (
-            f"cannot fit {num_balls} balls of r={ball_radius_m*1000:.2f} mm — "
+            f"cannot fit {num_balls} balls of r={ball_radius_m*1000:.2f} mm: "
             f"pile height {pile_height*1000:.1f} mm exceeds interior "
             f"{interior_side*1000:.1f} mm minus the {wall_margin_m*1000:.0f} mm "
             f"jitter margin. Reduce num_balls or ball_radius_m."
@@ -219,7 +219,7 @@ def _get_hollow_box_spec() -> mujoco.MjSpec:
 
 def _make_ball_spec_fn(radius: float, name: str):
     """Build a spec_fn producing a single free-jointed sphere entity.
-    Args: radius — sphere radius in meters; name — body name for the ball.
+    Args: radius: sphere radius in meters; name: body name for the ball.
     Returns: zero-arg callable returning a fresh mujoco.MjSpec.
     """
     def _spec() -> mujoco.MjSpec:
@@ -254,7 +254,7 @@ def _ball_grid_offsets(
     wall_margin_m: float = 0.008,
 ) -> list[tuple[float, float, float]]:
     """Compute box-local grid offsets that pack N balls floor-up.
-    Args: num_balls — ball count; radius — sphere radius; ball_gap_m — inter-ball clearance; wall_margin_m — clearance to interior walls.
+    Args: num_balls: ball count; radius: sphere radius; ball_gap_m: inter-ball clearance; wall_margin_m: clearance to interior walls.
     Returns: list of (dx, dy, dz) box-local offsets, length num_balls.
     """
     info = check_fits(num_balls, radius,
@@ -296,7 +296,7 @@ def reset_robot_box_and_balls(
     ball_xy_jitter: float = 0.005,
 ) -> None:
     """Reset robot, box, and all balls in one write with a shared sampled yaw.
-    Args: env — RL env; env_ids — envs to reset (None = all); box_cfg — box entity; ball_cfgs — tuple of ball entities; xy_jitter_robot — root xy noise; yaw_range — base yaw range; box_x_offset — forward hand spacing; box_z_above_root — box height above root; box_xy_jitter — box lateral noise; ball_xy_jitter — per-ball lateral noise.
+    Args: env: RL env; env_ids: envs to reset (None = all); box_cfg: box entity; ball_cfgs: tuple of ball entities; xy_jitter_robot: root xy noise; yaw_range: base yaw range; box_x_offset: forward hand spacing; box_z_above_root: box height above root; box_xy_jitter: box lateral noise; ball_xy_jitter: per-ball lateral noise.
     Returns: none.
     """
     if env_ids is None:
@@ -383,7 +383,7 @@ def uniform_split_ball_mass_dr(
     total_mass_range: tuple[float, float] = (BALL_TOTAL_MASS_MIN, BALL_TOTAL_MASS_MAX),
 ) -> None:
     """Sample per-env total payload and split it equally across the N balls.
-    Args: env — RL env; env_ids — envs to randomize (None = all); ball_cfgs — tuple of ball entities; total_mass_range — uniform range for total payload in kg.
+    Args: env: RL env; env_ids: envs to randomize (None = all); ball_cfgs: tuple of ball entities; total_mass_range: uniform range for total payload in kg.
     Returns: none.
     """
     if env_ids is None:
@@ -397,7 +397,7 @@ def uniform_split_ball_mass_dr(
     total = torch.empty(n, device=env.device).uniform_(lo, hi)
     per_ball = total / float(N)   # (n,)
 
-    bm = env.sim.model.body_mass  # (num_envs, nbody) — real per-env storage
+    bm = env.sim.model.body_mass  # (num_envs, nbody): real per-env storage
     body_ids = torch.tensor(
         [int(env.scene[cfg.name].indexing.body_ids[0].item()) for cfg in ball_cfgs],
         device=env.device, dtype=torch.long,
@@ -419,7 +419,7 @@ _BALL_COM_EMA_KEY = "carry_slosh_ball_com_ema"
 
 def _ball_com_local(env, box_cfg, ball_cfgs):
     """Mean ball position in the box local frame relative to the box centre.
-    Args: env — RL env; box_cfg — box entity; ball_cfgs — tuple of ball entities.
+    Args: env: RL env; box_cfg: box entity; ball_cfgs: tuple of ball entities.
     Returns: (num_envs, 3) box-local COM tensor.
     """
     from mjlab.utils.lab_api.math import quat_apply_inverse
@@ -442,7 +442,7 @@ def _ball_com_local(env, box_cfg, ball_cfgs):
 
 def _ball_rel_vel_local(env, box_cfg, ball_cfgs):
     """Mean ball linear velocity relative to the box in the box local frame.
-    Args: env — RL env; box_cfg — box entity; ball_cfgs — tuple of ball entities.
+    Args: env: RL env; box_cfg: box entity; ball_cfgs: tuple of ball entities.
     Returns: (num_envs, 3) box-local relative velocity tensor.
     """
     from mjlab.utils.lab_api.math import quat_apply_inverse
@@ -465,7 +465,7 @@ def _ball_rel_vel_local(env, box_cfg, ball_cfgs):
 
 def ball_com_offset_obs(env, box_cfg, ball_cfgs):
     """Observation: box-local mean ball position, clipped for stability.
-    Args: env — RL env; box_cfg — box entity; ball_cfgs — tuple of ball entities.
+    Args: env: RL env; box_cfg: box entity; ball_cfgs: tuple of ball entities.
     Returns: (num_envs, 3) tensor clamped to [-0.2, 0.2].
     """
     return torch.nan_to_num(_ball_com_local(env, box_cfg, ball_cfgs),
@@ -474,7 +474,7 @@ def ball_com_offset_obs(env, box_cfg, ball_cfgs):
 
 def ball_rel_lin_vel_obs(env, box_cfg, ball_cfgs):
     """Observation: box-local mean ball velocity relative to the box.
-    Args: env — RL env; box_cfg — box entity; ball_cfgs — tuple of ball entities.
+    Args: env: RL env; box_cfg: box entity; ball_cfgs: tuple of ball entities.
     Returns: (num_envs, 3) tensor clamped to [-5, 5].
     """
     return torch.nan_to_num(_ball_rel_vel_local(env, box_cfg, ball_cfgs),
@@ -483,7 +483,7 @@ def ball_rel_lin_vel_obs(env, box_cfg, ball_cfgs):
 
 def ball_slosh_penalty(env, box_cfg, ball_cfgs) -> torch.Tensor:
     """Quadratic penalty on mean squared ball speed relative to the box.
-    Args: env — RL env; box_cfg — box entity; ball_cfgs — tuple of ball entities.
+    Args: env: RL env; box_cfg: box entity; ball_cfgs: tuple of ball entities.
     Returns: (num_envs,) non-negative penalty (pair with a negative reward weight).
     """
     box_vel_w = env.scene[box_cfg.name].data.root_link_lin_vel_w             # (E, 3)
@@ -502,7 +502,7 @@ def ball_com_stability_reward(
     ema_alpha: float = 0.05,
 ) -> torch.Tensor:
     """Gaussian reward on the EMA-averaged box-local ball COM.
-    Args: env — RL env; box_cfg — box entity; ball_cfgs — tuple of ball entities; sigma — Gaussian bandwidth in meters; ema_alpha — EMA per-step weight.
+    Args: env: RL env; box_cfg: box entity; ball_cfgs: tuple of ball entities; sigma: Gaussian bandwidth in meters; ema_alpha: EMA per-step weight.
     Returns: (num_envs,) reward in (0, 1].
     """
     com_now = _ball_com_local(env, box_cfg, ball_cfgs)                       # (E, 3)
@@ -554,7 +554,7 @@ def build_g1_carry_slosh_mdp():
     ball_scene_cfgs = tuple(SceneEntityCfg(name, body_names=(name,)) for name in ball_names)
 
     events = dict(parts["events"])
-    events.pop("reset_robot_and_box", None)
+    events.pop("reset_robot_and_box_held", None)
     events["reset_robot_box_balls"] = EventTermCfg(
         func=reset_robot_box_and_balls,
         mode="reset",
@@ -605,7 +605,7 @@ def build_g1_carry_slosh_mdp():
 
 def g1_carry_slosh_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     """Build the ManagerBasedRlEnvCfg for the slosh carry task.
-    Args: play — when True disables observation noise and push events.
+    Args: play: when True disables observation noise and push events.
     Returns: fully populated ManagerBasedRlEnvCfg.
     """
     parts = build_g1_carry_slosh_mdp()
@@ -664,6 +664,8 @@ def g1_carry_slosh_ppo_runner_cfg():
     """
     rl = g1_carry_ppo_runner_cfg()
     rl.experiment_name = "g1_carry_slosh"
+    # Carry's mirror_g1_carry hard-codes CARRY_OBS_DIM=124; slosh adds 6 extra dims.
+    rl.algorithm.symmetry_cfg = None
     return rl
 
 
