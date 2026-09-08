@@ -640,10 +640,11 @@ def g1_carry_slosh_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
             azimuth=125.0,
         ),
         sim=SimulationCfg(
-            # Per-ball caps sized for hex-close-pack contact (~6-8 pairs) with 2x safety;
-            # njmax uses ~8 Jacobian rows per contact (condim=6 pyramidal friction).
-            nconmax=400 + 12 * NUM_BALLS,
-            njmax=2000 + 96 * NUM_BALLS,
+            # Close-packed balls: MuJoCo enumerates up to C(N,2) ball-ball pairs
+            # plus wall contacts at compile. njmax is ~8 Jacobian rows per contact
+            # (condim=6 pyramidal friction).
+            nconmax=400 + NUM_BALLS * (NUM_BALLS - 1) // 2 + 12 * NUM_BALLS,
+            njmax=2000 + 8 * (NUM_BALLS * (NUM_BALLS - 1) // 2 + 12 * NUM_BALLS),
             contact_sensor_maxmatch=500,
             mujoco=MujocoCfg(timestep=0.005, iterations=10, ls_iterations=20),
         ),
