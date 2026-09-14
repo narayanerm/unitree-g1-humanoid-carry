@@ -48,9 +48,7 @@ from mjlab.rl import RslRlOnPolicyRunnerCfg
 
 # Reuse MDP-related pieces from the normal carry task.
 from src.policy_carry import (  # noqa: F401  (re-exported for notebook use)
-    BOX_HALF,
     BOX_DROP_Z,
-    BOX_HOLD_X_OFFSET,
     BOX_HOLD_Z,
     BOX_HOLD_Z_ABOVE_ROOT,
     CHEST_Z,
@@ -62,11 +60,16 @@ from src.policy_carry import (  # noqa: F401  (re-exported for notebook use)
     g1_carry_ppo_runner_cfg,
 )
 
+# Local box override: 15 cm side (half-extent 0.075 m) instead of the 21 cm rigid-carry box.
+# Kept local so the rigid Mjlab-G1-Carry task keeps its own BOX_HALF=0.105.
+BOX_HALF          = 0.075
+BOX_HOLD_X_OFFSET = 0.29  # forward hand spacing; keeps the near face at the same root distance.
+
 # Slosh geometry defaults; override via configure().
 BOX_WALL_T          = 0.008        # wall half-thickness in meters
 BOX_WALL_MASS_TOTAL = 0.20         # fixed box shell mass in kg
 NUM_BALLS           = 1            # default ball count
-BALL_RADIUS         = BOX_HALF / 4 # default ball radius (0.02625 m)
+BALL_RADIUS         = BOX_HALF / 4 # default ball radius
 BALL_TOTAL_MASS_MIN = 0.30         # kg
 BALL_TOTAL_MASS_MAX = 3.00         # kg
 
@@ -75,6 +78,63 @@ TASK_ID = "Mjlab-G1-Carry-Slosh"
 # Contract for src.collect_buffer.
 SNAPSHOT_ENTITIES = ["robot", "box"]
 SNAPSHOT_YAW_ALIGN = True
+
+
+# Tighter arm pose for the 15 cm box (shoulders closed and elbows more bent than the rigid-carry pose).
+HOLDING_ARM_POSE_SMALL = {
+    "left_shoulder_pitch_joint":  -0.65,
+    "left_shoulder_roll_joint":    0.15,
+    "left_shoulder_yaw_joint":     0.0,
+    "left_elbow_joint":            0.75,
+    "left_wrist_roll_joint":       0.0,
+    "left_wrist_pitch_joint":      0.0,
+    "left_wrist_yaw_joint":        0.0,
+    "right_shoulder_pitch_joint": -0.65,
+    "right_shoulder_roll_joint":  -0.15,
+    "right_shoulder_yaw_joint":    0.0,
+    "right_elbow_joint":           0.75,
+    "right_wrist_roll_joint":      0.0,
+    "right_wrist_pitch_joint":     0.0,
+    "right_wrist_yaw_joint":       0.0,
+}
+
+
+def reset_arms_to_holding_small(
+    env: ManagerBasedRlEnv,
+    env_ids: torch.Tensor | None,
+    asset_cfg: SceneEntityCfg,
+) -> None:
+    """Override the 14 arm joints to HOLDING_ARM_POSE_SMALL after walk-buffer reset.
+    Args: env: RL env; env_ids: envs to reset (None = all); asset_cfg: robot entity selecting arm joints.
+    Returns: none.
+    """
+    if env_ids is None:
+        env_ids = torch.arange(env.num_envs, device=env.device, dtype=torch.int)
+    n = len(env_ids)
+    if n == 0:
+        return
+    asset: Entity = env.scene[asset_cfg.name]
+    joint_ids = asset_cfg.joint_ids
+    if isinstance(joint_ids, list):
+        joint_ids_t = torch.tensor(joint_ids, device=env.device)
+    else:
+        joint_ids_t = joint_ids
+    pose = torch.tensor(
+        [HOLDING_ARM_POSE_SMALL[j] for j in asset_cfg.joint_names],
+        device=env.device,
+    ).unsqueeze(0).expand(n, -1).clone()
+    vel = torch.zeros_like(pose)
+    asset.write_joint_state_to_sim(pose, vel, joint_ids=joint_ids_t, env_ids=env_ids)
+
+
+def box_size_obs_small(env):
+    """Observation: constant (2*BOX_HALF)^3 broadcast for the smaller slosh box.
+    Args: env: RL env.
+    Returns: (num_envs, 3) tensor of full box side lengths.
+    """
+    root_pos = env.scene["robot"].data.root_link_pos_w
+    size = torch.tensor([2 * BOX_HALF, 2 * BOX_HALF, 2 * BOX_HALF], device=root_pos.device)
+    return size.expand(root_pos.shape[0], -1)
 
 
 def configure(num_balls: int = 1, ball_radius_m: float | None = None) -> None:
@@ -225,15 +285,18 @@ def _get_hollow_box_spec() -> mujoco.MjSpec:
     fj.name = "box_free"
 
     inner = BOX_HALF - BOX_WALL_T
-    rgba  = (0.85, 0.22, 0.18, 0.30)
+    rgba  = (0.80, 0.80, 0.82, 0.30)  # light gray semi-transparent, matches the soft aesthetic
     mass_each = BOX_WALL_MASS_TOTAL / 6.0
+    # contype=1, conaffinity=3: walls collide with anything in group 1 (other walls) or 2 (balls).
     common = dict(
         rgba=rgba,
-        condim=6,
+        condim=3,
         friction=(4.0, 0.25, 0.08),
         solref=(0.004, 1.0),
         solimp=(0.95, 0.995, 0.001, 0.5, 2.0),
         mass=mass_each,
+        contype=1,
+        conaffinity=3,
     )
 
     body.add_geom(name="box_bottom", type=mujoco.mjtGeom.mjGEOM_BOX,
@@ -272,16 +335,19 @@ def _make_ball_spec_fn(radius: float, name: str):
         body = spec.worldbody.add_body(name=name)
         fj = body.add_freejoint()
         fj.name = f"{name}_free"
+        # contype=2, conaffinity=3: balls collide with walls (group 1) and with other balls (group 2).
         body.add_geom(
             name=f"{name}_geom",
             type=mujoco.mjtGeom.mjGEOM_SPHERE,
             size=(radius, 0.0, 0.0),
             mass=BALL_TOTAL_MASS_MIN,  # per-env DR overrides this
-            rgba=(1.0, 0.85, 0.10, 1.0),
-            condim=6,
+            rgba=(0.85, 0.30, 0.20, 1.0),  # matches the soft-payload ball color
+            condim=3,
             friction=(1.5, 0.05, 0.02),
             solref=(0.004, 1.0),
             solimp=(0.95, 0.995, 0.001, 0.5, 2.0),
+            contype=2,
+            conaffinity=3,
         )
         return spec
     return _spec
@@ -379,11 +445,11 @@ def reset_robot_box_and_balls(
     box_y = robot_y + box_x_offset * sy + box_jy
     box_z = robot_z + box_z_above_root + torch.empty(n, device=env.device).uniform_(-0.005, 0.005)
 
-    identity_quat = torch.zeros(n, 4, device=env.device); identity_quat[:, 0] = 1.0
+    # Match the box yaw to the robot yaw so the front face aligns with the arm grip.
     box_pos = torch.stack([box_x, box_y, box_z], dim=-1)
     box: Entity = env.scene[box_cfg.name]
     box.write_root_link_pose_to_sim(
-        torch.cat([box_pos, identity_quat], dim=-1), env_ids=env_ids,
+        torch.cat([box_pos, robot_quat], dim=-1), env_ids=env_ids,
     )
     box.write_root_link_velocity_to_sim(
         torch.zeros(n, 6, device=env.device), env_ids=env_ids,
@@ -394,18 +460,18 @@ def reset_robot_box_and_balls(
     if buf is not None and buf.shape[0] == env.num_envs:
         buf[env_ids.long()] = 0.0
 
-    # Box spawns with identity quat so box-local offsets apply directly in world xyz.
+    # Ball interior offsets are box-local; rotate them by the box yaw before writing world xyz.
     offsets = _ball_grid_offsets(len(ball_cfgs), BALL_RADIUS)
     for (dx, dy, dz), cfg in zip(offsets, ball_cfgs):
         jx = torch.empty(n, device=env.device).uniform_(-ball_xy_jitter, ball_xy_jitter)
         jy = torch.empty(n, device=env.device).uniform_(-ball_xy_jitter, ball_xy_jitter)
-        wx = box_x + dx + jx
-        wy = box_y + dy + jy
+        wx = box_x + (dx * cx - dy * sy) + jx
+        wy = box_y + (dx * sy + dy * cx) + jy
         wz = box_z + dz
         ball_pos = torch.stack([wx, wy, wz], dim=-1)
         ball: Entity = env.scene[cfg.name]
         ball.write_root_link_pose_to_sim(
-            torch.cat([ball_pos, identity_quat], dim=-1), env_ids=env_ids,
+            torch.cat([ball_pos, robot_quat], dim=-1), env_ids=env_ids,
         )
         ball.write_root_link_velocity_to_sim(
             torch.zeros(n, 6, device=env.device), env_ids=env_ids,
@@ -610,6 +676,14 @@ def build_g1_carry_slosh_mdp():
             "total_mass_range": (BALL_TOTAL_MASS_MIN, BALL_TOTAL_MASS_MAX),
         },
     )
+    # Swap the shared reset_arms_holding for the tighter small-box arm pose,
+    # preserving the joint-selecting asset_cfg built by build_g1_carry_mdp.
+    old_arms = events["reset_arms_holding"]
+    events["reset_arms_holding"] = EventTermCfg(
+        func=reset_arms_to_holding_small,
+        mode="reset",
+        params=old_arms.params,
+    )
     parts["events"] = events
 
     # Feed ball-cloud observations to both actor and critic groups.
@@ -629,6 +703,9 @@ def build_g1_carry_slosh_mdp():
     }
     for group_name, group in parts["observations"].items():
         group.terms.update(ball_obs)
+        # Report the shadowed 10 cm side, not the rigid-carry 21 cm.
+        if "box_size" in group.terms:
+            group.terms["box_size"] = ObservationTermCfg(func=box_size_obs_small)
 
     # Quadratic slosh penalty combined with EMA-averaged COM-stability reward.
     from mjlab.managers import RewardTermCfg
@@ -681,13 +758,13 @@ def g1_carry_slosh_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
             azimuth=125.0,
         ),
         sim=SimulationCfg(
-            # Close-packed balls: MuJoCo enumerates up to C(N,2) ball-ball pairs
-            # plus wall contacts at compile. njmax is ~8 Jacobian rows per contact
-            # (condim=6 pyramidal friction).
-            nconmax=400 + NUM_BALLS * (NUM_BALLS - 1) // 2 + 12 * NUM_BALLS,
-            njmax=2000 + 8 * (NUM_BALLS * (NUM_BALLS - 1) // 2 + 12 * NUM_BALLS),
+            # Ball-ball collision ON (balls have conaffinity=3). Budget accounts for the C(N,2)
+            # potential ball-ball pairs plus 12 wall/floor contacts per ball; njmax uses ~4
+            # Jacobian rows per contact for condim=3 (cone friction, isotropic).
+            nconmax=400 + 12 * NUM_BALLS + NUM_BALLS * (NUM_BALLS - 1) // 2,
+            njmax=2000 + 4 * (400 + 12 * NUM_BALLS + NUM_BALLS * (NUM_BALLS - 1) // 2),
             contact_sensor_maxmatch=500,
-            mujoco=MujocoCfg(timestep=0.005, iterations=10, ls_iterations=20),
+            mujoco=MujocoCfg(timestep=0.005, iterations=10, ls_iterations=10),
         ),
         decimation=5,
         episode_length_s=8.0,

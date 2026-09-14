@@ -68,9 +68,7 @@ from mjlab.rl import RslRlModelCfg, RslRlOnPolicyRunnerCfg, RslRlPpoAlgorithmCfg
 
 # Reuse carry MDP pieces except reward/obs functions that need lattice awareness.
 from src.policy_carry import (  # noqa: F401
-    BOX_HALF,
     BOX_DROP_Z,
-    BOX_HOLD_X_OFFSET,
     BOX_HOLD_Z,
     BOX_HOLD_Z_ABOVE_ROOT,
     CHEST_Z,
@@ -80,18 +78,21 @@ from src.policy_carry import (  # noqa: F401
     G1_HOME_ROOT_ROT,
     G1_HOME_JOINT_POS,
     HOLDING_ARM_JOINTS,
-    HOLDING_ARM_POSE,
     _LEFT_SYM_JOINTS,
     _RIGHT_SYM_JOINTS,
     action_rate_l2,
     body_vector,
-    reset_arms_to_holding,
     single_stance_reward,
     symmetric_pose_penalty,
     upright_torso_reward,
     wrist_actuator_force_obs,
     _entity_pos,
 )
+
+# Local box override: 15 cm side (half-extent 0.075 m) instead of the 21 cm rigid-carry box.
+# Kept local so the rigid Mjlab-G1-Carry task keeps its own BOX_HALF=0.105.
+BOX_HALF          = 0.075
+BOX_HOLD_X_OFFSET = 0.29  # forward hand spacing; keeps the near face at the same root distance.
 from src.policy_carry import (
     g1_carry_ppo_runner_cfg as _g1_carry_ppo_runner_cfg,
 )
@@ -129,6 +130,53 @@ TASK_ID = "Mjlab-G1-Carry-Soft"
 # Contract for src.collect_buffer.
 SNAPSHOT_ENTITIES = ["robot", "box"]
 SNAPSHOT_YAW_ALIGN = True
+
+
+# Tighter arm pose for the 15 cm box (shoulders closed and elbows more bent than the rigid-carry pose).
+HOLDING_ARM_POSE_SMALL = {
+    "left_shoulder_pitch_joint":  -0.65,
+    "left_shoulder_roll_joint":    0.15,
+    "left_shoulder_yaw_joint":     0.0,
+    "left_elbow_joint":            0.75,
+    "left_wrist_roll_joint":       0.0,
+    "left_wrist_pitch_joint":      0.0,
+    "left_wrist_yaw_joint":        0.0,
+    "right_shoulder_pitch_joint": -0.65,
+    "right_shoulder_roll_joint":  -0.15,
+    "right_shoulder_yaw_joint":    0.0,
+    "right_elbow_joint":           0.75,
+    "right_wrist_roll_joint":      0.0,
+    "right_wrist_pitch_joint":     0.0,
+    "right_wrist_yaw_joint":       0.0,
+}
+
+
+def reset_arms_to_holding_small(
+    env: ManagerBasedRlEnv,
+    env_ids: torch.Tensor | None,
+    asset_cfg: SceneEntityCfg,
+) -> None:
+    """Override the 14 arm joints to HOLDING_ARM_POSE_SMALL after walk-buffer reset.
+    Args: env: RL env; env_ids: envs to reset (None = all); asset_cfg: robot entity selecting arm joints.
+    Returns: none.
+    """
+    if env_ids is None:
+        env_ids = torch.arange(env.num_envs, device=env.device, dtype=torch.int)
+    n = len(env_ids)
+    if n == 0:
+        return
+    asset: Entity = env.scene[asset_cfg.name]
+    joint_ids = asset_cfg.joint_ids
+    if isinstance(joint_ids, list):
+        joint_ids_t = torch.tensor(joint_ids, device=env.device)
+    else:
+        joint_ids_t = joint_ids
+    pose = torch.tensor(
+        [HOLDING_ARM_POSE_SMALL[j] for j in asset_cfg.joint_names],
+        device=env.device,
+    ).unsqueeze(0).expand(n, -1).clone()
+    vel = torch.zeros_like(pose)
+    asset.write_joint_state_to_sim(pose, vel, joint_ids=joint_ids_t, env_ids=env_ids)
 
 
 def _effective_springs() -> tuple[float, float, float, float]:
@@ -789,7 +837,7 @@ def build_g1_carry_soft_mdp():
                     "box_xy_jitter": 0.02},
         ),
         "reset_arms_holding": EventTermCfg(
-            func=reset_arms_to_holding, mode="reset", params={"asset_cfg": holding_arms},
+            func=reset_arms_to_holding_small, mode="reset", params={"asset_cfg": holding_arms},
         ),
         "push_robot": EventTermCfg(
             func=vel_mdp.push_by_setting_velocity,
