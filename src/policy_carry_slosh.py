@@ -104,6 +104,47 @@ def radius_from_fill_pct(num_balls: int, interior_fill_pct: float) -> float:
     return (3.0 * per_ball_vol / (4.0 * math.pi)) ** (1.0 / 3.0)
 
 
+def radius_from_vertical_fill_pct(
+    num_balls: int,
+    vertical_fill_pct: float,
+    *,
+    ball_gap_m: float = 0.001,
+    wall_margin_m: float = 0.008,
+) -> float:
+    """Compute the ball radius so the cubic-grid pile reaches vertical_fill_pct of interior height.
+    Args: num_balls: number of balls; vertical_fill_pct: pile top height as pct of interior height in (0, 100]; ball_gap_m: centre-to-centre clearance; wall_margin_m: clearance to interior walls.
+    Returns: ball radius in meters that yields the closest achievable pile height.
+    """
+    assert num_balls >= 1
+    assert 0.0 < vertical_fill_pct <= 100.0, "vertical_fill_pct must be in (0, 100]"
+    interior_side = 2.0 * (BOX_HALF - 2.0 * BOX_WALL_T)
+    usable = interior_side - 2.0 * wall_margin_m
+    target = interior_side * vertical_fill_pct / 100.0
+    best_r, best_diff = None, float("inf")
+    r_lo, r_hi = 1e-4, usable / 2.0
+    r_step = 1e-5
+    r = r_lo
+    while r <= r_hi:
+        step = 2.0 * r + ball_gap_m
+        if step > usable:
+            r += r_step; continue
+        n_per_axis = int(usable / step) + 1
+        n_layers = math.ceil(num_balls / (n_per_axis * n_per_axis))
+        pile = n_layers * step - ball_gap_m
+        if pile > interior_side - wall_margin_m:
+            r += r_step; continue
+        diff = abs(pile - target)
+        if diff < best_diff:
+            best_diff, best_r = diff, r
+        r += r_step
+    if best_r is None:
+        raise ValueError(
+            f"cannot fit {num_balls} balls to reach {vertical_fill_pct}% vertical fill "
+            f"in interior of {interior_side*1000:.1f} mm."
+        )
+    return best_r
+
+
 def check_fits(
     num_balls: int,
     ball_radius_m: float,
