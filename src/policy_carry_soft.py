@@ -922,6 +922,8 @@ def g1_carry_soft_ppo_runner_cfg():
     """
     rl = _g1_carry_ppo_runner_cfg()
     rl.experiment_name = "g1_carry_soft"
+    # Carry's mirror_g1_carry hard-codes CARRY_OBS_DIM=124; soft has 117 (no box_orientation/box_size).
+    rl.algorithm.symmetry_cfg = None
     return rl
 
 
