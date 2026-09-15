@@ -718,6 +718,73 @@ def build_g1_carry_slosh_mdp():
         params={"box_cfg": box, "ball_cfgs": ball_scene_cfgs,
                 "sigma": 0.03, "ema_alpha": 0.05},
     )
+
+    # Gait shaping ported from policy_walk: variable_posture + swing_height_error, plus
+    # bumped single/double stance weights. Leg+waist joints only so the arm-holding pose is not fought.
+    from mjlab.tasks.velocity import mdp as vel_mdp
+    from src.policy_walk import swing_height_error as walk_swing_height_error
+    leg_asset = SceneEntityCfg(
+        "robot",
+        joint_names=(
+            r".*hip_pitch.*", r".*hip_roll.*", r".*hip_yaw.*",
+            r".*knee.*",
+            r".*ankle_pitch.*", r".*ankle_roll.*",
+            r".*waist.*",
+        ),
+        preserve_order=True,
+    )
+    parts["rewards"]["pose"] = RewardTermCfg(
+        func=vel_mdp.variable_posture,
+        weight=0.6,
+        params={
+            "asset_cfg": leg_asset,
+            "command_name": "twist",
+            "std_standing": {".*": 0.05},
+            "std_walking": {
+                r".*hip_pitch.*":   0.45,
+                r".*hip_roll.*":    0.15,
+                r".*hip_yaw.*":     0.15,
+                r".*knee.*":        0.50,
+                r".*ankle_pitch.*": 0.25,
+                r".*ankle_roll.*":  0.10,
+                r".*waist_yaw.*":   0.20,
+                r".*waist_roll.*":  0.08,
+                r".*waist_pitch.*": 0.10,
+            },
+            "std_running": {
+                r".*hip_pitch.*":   0.50,
+                r".*hip_roll.*":    0.20,
+                r".*hip_yaw.*":     0.20,
+                r".*knee.*":        0.60,
+                r".*ankle_pitch.*": 0.35,
+                r".*ankle_roll.*":  0.15,
+                r".*waist_yaw.*":   0.30,
+                r".*waist_roll.*":  0.08,
+                r".*waist_pitch.*": 0.20,
+            },
+            "walking_threshold": 0.05,
+            "running_threshold": 1.2,
+        },
+    )
+    parts["rewards"]["swing_height_error"] = RewardTermCfg(
+        func=walk_swing_height_error,
+        weight=-0.4,
+        params={
+            "sensor_name": "feet_ground_contact",
+            "height_sensor_name": "foot_height_scan",
+            "target_height": 0.08,
+            "sigma": 0.08,
+            "command_name": "twist",
+            "command_threshold": 0.05,
+        },
+    )
+    if "single_stance" in parts["rewards"]:
+        parts["rewards"]["single_stance"].weight = 1.2
+    if "double_stance" in parts["rewards"]:
+        parts["rewards"]["double_stance"].weight = 0.8
+    if "upright" in parts["rewards"]:
+        parts["rewards"]["upright"].weight = 1.5
+
     return parts
 
 
