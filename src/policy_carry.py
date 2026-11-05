@@ -839,7 +839,7 @@ def build_g1_carry_mdp():
     rewards = {
         "track_linear_velocity":  RewardTermCfg(func=vel_mdp.track_linear_velocity,  weight=6.0,
                                                 params={"command_name": "twist", "std": math.sqrt(0.25)}),
-        "track_angular_velocity": RewardTermCfg(func=vel_mdp.track_angular_velocity, weight=10.0,
+        "track_angular_velocity": RewardTermCfg(func=vel_mdp.track_angular_velocity, weight=6.0,
                                                 params={"command_name": "twist", "std": math.sqrt(0.10)}),
         "wz_sign_penalty": RewardTermCfg(func=wz_sign_penalty, weight=2.0,
                                          params={"command_name": "twist"}),
@@ -853,7 +853,7 @@ def build_g1_carry_mdp():
             func=symmetric_pose_penalty, weight=-0.3,
             params={"left_cfg": left_sym, "right_cfg": right_sym, "feet_moving_threshold": 0.1},
         ),
-        "single_stance":  RewardTermCfg(func=single_stance_reward,  weight=0.8,
+        "single_stance":  RewardTermCfg(func=single_stance_reward,  weight=1.5,
                                         params={"sensor_name": "feet_ground_contact",
                                                 "command_name": "twist", "command_threshold": 0.05}),
         "double_stance":  RewardTermCfg(func=double_stance_reward,  weight=0.5,
