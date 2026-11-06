@@ -609,6 +609,16 @@ def box_orientation_reward(env, box_cfg) -> torch.Tensor:
     return torch.clamp(up_z, 0.0, 1.0) + torch.clamp(cos_diff, 0.0, 1.0)
 
 
+def box_lateral_sway_penalty(env, box_cfg) -> torch.Tensor:
+    """Penalize box lateral (body-y) velocity, the side-to-side sway mode.
+    Args: env: RL env; box_cfg: box entity.
+    Returns: (num_envs,) non-negative penalty in (m/s)^2.
+    """
+    box_vel_w = env.scene[box_cfg.name].data.root_link_lin_vel_w
+    box_vel_b = quat_apply_inverse(_base_yaw_quat_w(env), box_vel_w)
+    return box_vel_b[:, 1].pow(2)
+
+
 def upright_torso_reward(env, trunk_cfg) -> torch.Tensor:
     """Reward torso local +z aligned with world +z.
     Args: env: RL env; trunk_cfg: torso body selector.
@@ -847,6 +857,7 @@ def build_g1_carry_mdp():
                                         params={"left_hand_cfg": left_hand, "right_hand_cfg": right_hand,
                                                 "box_cfg": box, "target_z": CHEST_Z}),
         "box_orientation": RewardTermCfg(func=box_orientation_reward, weight=1.5, params={"box_cfg": box}),
+        "box_lateral_sway": RewardTermCfg(func=box_lateral_sway_penalty, weight=-0.5, params={"box_cfg": box}),
         "upright":        RewardTermCfg(func=upright_torso_reward,  weight=1.0, params={"trunk_cfg": trunk}),
         # Small weight so PPO doesn't learn "don't move" as a zero-penalty strategy.
         "symmetric_pose": RewardTermCfg(
