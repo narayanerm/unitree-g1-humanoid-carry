@@ -874,7 +874,7 @@ def build_g1_carry_mdp():
         "dof_pos_limits": RewardTermCfg(func=vel_mdp.joint_pos_limits, weight=-1.0, params={"asset_cfg": g1_asset}),
         "body_ang_vel": RewardTermCfg(
             func=vel_mdp.body_angular_velocity_penalty,
-            weight=-0.2, params={"asset_cfg": trunk},
+            weight=-0.05, params={"asset_cfg": trunk},
         ),
         "self_collisions": RewardTermCfg(
             func=vel_mdp.self_collision_cost, weight=-1.0,
